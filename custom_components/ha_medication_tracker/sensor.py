@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -28,12 +28,6 @@ NEXT_DOSES_DESCRIPTION = SensorEntityDescription(
     key="next_doses",
     name="Medication Next Doses",
     icon="mdi:clock-time-four",
-)
-
-PATIENT_DESCRIPTION = SensorEntityDescription(
-    key="patient",
-    name="Patient",
-    icon="mdi:account",
 )
 
 
@@ -69,8 +63,6 @@ class MedicationNextDoseSensor(CoordinatorEntity, SensorEntity):
         self.entity_description = NEXT_DOSES_DESCRIPTION
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_next_doses"
-        self._attr_has_entity_name = True
-
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="Medication Tracker",
@@ -136,12 +128,14 @@ class PatientSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._patient = patient
         self._attr_unique_id = f"{entry.entry_id}_patient_{patient['id']}"
+        
+        # Set the entity name to the patient's name
         self._attr_name = patient.get("name", "Unknown Patient")
-        self._attr_has_entity_name = True
-
+        
+        # Create a custom entity description for this patient
         self.entity_description = SensorEntityDescription(
             key=f"patient_{patient['id']}",
-            name=patient.get("name", "Unknown Patient"),
+            name=self._attr_name,
             icon="mdi:account",
         )
 
