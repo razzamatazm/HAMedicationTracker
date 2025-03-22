@@ -167,10 +167,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.exception("Error adding medication: %s", ex)
                     errors["base"] = "add_failed"
 
-        schema = ADD_MEDICATION_SCHEMA.extend(
-            {
-                vol.Optional("done", default=False): bool,
-            }
+        # Create a conditional schema based on whether we're adding a medication or marking as done
+        base_schema = {
+            vol.Optional("done", default=False): bool,
+        }
+
+        medication_schema = {
+            vol.Required("name"): str,
+            vol.Optional("dosage"): vol.Coerce(float),
+            vol.Optional("unit", default="mg"): str,
+            vol.Optional("frequency", default=6): vol.Coerce(float),
+            vol.Optional("instructions"): str,
+        }
+
+        schema = vol.Schema(base_schema).extend(
+            medication_schema if not (user_input and user_input.get("done")) else {}
         )
 
         return self.async_show_form(
