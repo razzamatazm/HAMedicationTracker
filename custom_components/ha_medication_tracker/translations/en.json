@@ -8,15 +8,48 @@
                     "name": "Name"
                 }
             },
+            "add_patients": {
+                "title": "Add Patients",
+                "description": "Add patients to track medications for. Currently added {patient_count} patients: {patient_list}",
+                "data": {
+                    "name": "Patient Name",
+                    "weight": "Weight",
+                    "weight_unit": "Weight Unit",
+                    "age": "Age",
+                    "done": "I'm done adding patients"
+                }
+            },
+            "add_medications": {
+                "title": "Add Medications for {patient_name}",
+                "description": "Add medications for {patient_name}. Currently added {medication_count} medications: {medication_list}",
+                "data": {
+                    "name": "Medication Name",
+                    "dosage": "Dosage Amount",
+                    "unit": "Dosage Unit",
+                    "frequency": "Hours Between Doses",
+                    "instructions": "Instructions",
+                    "done": "I'm done adding medications for this patient"
+                }
+            }
+        },
+        "error": {
+            "no_patients": "Please add at least one patient before continuing"
+        },
+        "abort": {
+            "already_configured": "Device is already configured"
+        }
+    },
+    "options": {
+        "step": {
             "menu": {
-                "title": "Medication Tracker Configuration",
-                "description": "Choose what you would like to configure",
+                "title": "Medication Tracker Options",
+                "description": "What would you like to do?",
                 "data": {
                     "next_step": "Select action"
                 }
             },
             "add_patient": {
-                "title": "Add Patient",
+                "title": "Add New Patient",
                 "description": "Add a new patient to track medications for",
                 "data": {
                     "name": "Patient Name",
@@ -25,11 +58,24 @@
                     "age": "Age"
                 }
             },
+            "select_patient": {
+                "title": "Select Patient",
+                "description": "Select a patient to manage",
+                "data": {
+                    "patient_id": "Patient"
+                }
+            },
+            "patient_menu": {
+                "title": "Patient Management",
+                "description": "What would you like to do with this patient?",
+                "data": {
+                    "action": "Select action"
+                }
+            },
             "add_medication": {
                 "title": "Add Medication",
-                "description": "Add a new medication for a patient",
+                "description": "Add a new medication for this patient",
                 "data": {
-                    "patient_id": "Patient",
                     "name": "Medication Name",
                     "dosage": "Dosage Amount",
                     "unit": "Dosage Unit",
@@ -37,44 +83,18 @@
                     "instructions": "Instructions"
                 }
             },
-            "select_patient": {
-                "title": "Select Patient",
-                "description": "Select a patient to manage medications for",
-                "data": {
-                    "patient_id": "Patient"
-                }
-            },
-            "manage_medications": {
-                "title": "Manage Medications",
-                "description": "Add or remove medications for this patient",
-                "data": {
-                    "action": "Action",
-                    "medication_id": "Select Medication"
-                }
-            },
-            "remove_medication": {
+            "select_medication": {
                 "title": "Remove Medication",
-                "description": "Are you sure you want to remove {medication}?",
+                "description": "Select a medication to remove",
                 "data": {
-                    "confirm": "Yes, remove this medication"
+                    "medication_id": "Medication"
                 }
             }
         },
         "error": {
             "add_failed": "Failed to add",
-            "no_patients": "Please add a patient first",
-            "remove_failed": "Failed to remove medication"
-        },
-        "abort": {
-            "already_configured": "Device is already configured"
-        }
-    },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Medication Tracker Options",
-                "description": "Configure the Medication Tracker integration"
-            }
+            "no_patients": "No patients found",
+            "no_medications": "No medications found for this patient"
         }
     }
 } 

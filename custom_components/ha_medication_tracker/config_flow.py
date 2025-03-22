@@ -62,20 +62,112 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self.patients = []
+        self.current_patient = None
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
-        errors: dict[str, str] = {}
-
         if user_input is not None:
-            return self.async_create_entry(
-                title=user_input["name"],
-                data=user_input,
-            )
+            # Store the name and proceed to patient setup
+            self.name = user_input["name"]
+            return await self.async_step_add_patients()
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=STEP_USER_DATA_SCHEMA,
+        )
+
+    async def async_step_add_patients(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle adding patients."""
+        errors = {}
+
+        if user_input is not None:
+            if user_input.get("done"):
+                if not self.patients:
+                    errors["base"] = "no_patients"
+                else:
+                    # All patients added, create the config entry
+                    return self.async_create_entry(
+                        title=self.name,
+                        data={
+                            "name": self.name,
+                            "patients": self.patients,
+                        },
+                    )
+            else:
+                # Add the patient to our list
+                patient_id = str(uuid.uuid4())
+                patient_data = {
+                    "id": patient_id,
+                    **user_input,
+                    "medications": [],
+                }
+                self.patients.append(patient_data)
+                # Move to medication setup for this patient
+                self.current_patient = patient_data
+                return await self.async_step_add_medications()
+
+        schema = ADD_PATIENT_SCHEMA.extend(
+            {
+                vol.Optional("done", default=False): bool,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="add_patients",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "patient_count": str(len(self.patients)),
+                "patient_list": ", ".join(p["name"] for p in self.patients),
+            },
+        )
+
+    async def async_step_add_medications(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle adding medications for the current patient."""
+        errors = {}
+
+        if user_input is not None:
+            if user_input.get("done"):
+                # Done adding medications for this patient
+                return await self.async_step_add_patients()
+            else:
+                # Add the medication to the current patient
+                medication_id = str(uuid.uuid4())
+                medication_data = {
+                    "id": medication_id,
+                    "patient_id": self.current_patient["id"],
+                    **user_input,
+                }
+                self.current_patient["medications"].append(medication_data)
+                # Stay on this step to add more medications
+                return await self.async_step_add_medications()
+
+        schema = ADD_MEDICATION_SCHEMA.extend(
+            {
+                vol.Optional("done", default=False): bool,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="add_medications",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "patient_name": self.current_patient["name"],
+                "medication_count": str(len(self.current_patient["medications"])),
+                "medication_list": ", ".join(
+                    m["name"] for m in self.current_patient["medications"]
+                ),
+            },
         )
 
     @staticmethod
@@ -93,10 +185,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self.config_entry = config_entry
-        self.patient_data = {}
-        self.medication_data = {}
-        self.selected_patient_id = None
-        self.selected_medication_id = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -111,9 +199,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             if user_input["next_step"] == "add_patient":
                 return await self.async_step_add_patient()
-            elif user_input["next_step"] == "add_medication":
-                return await self.async_step_add_medication()
-            elif user_input["next_step"] == "manage_medications":
+            elif user_input["next_step"] == "manage_patient":
                 return await self.async_step_select_patient()
 
         return self.async_show_form(
@@ -122,9 +208,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Required("next_step"): vol.In(
                         {
-                            "add_patient": "Add Patient",
-                            "add_medication": "Add Medication",
-                            "manage_medications": "Manage Existing Medications",
+                            "add_patient": "Add New Patient",
+                            "manage_patient": "Manage Existing Patient",
                         }
                     )
                 }
@@ -134,8 +219,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_add_patient(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle adding a patient."""
-        errors: dict[str, str] = {}
+        """Handle adding a new patient."""
+        errors = {}
 
         if user_input is not None:
             coordinator = self.hass.data[DOMAIN].get("coordinator")
@@ -151,127 +236,112 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             errors=errors,
         )
 
-    async def async_step_add_medication(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle adding a medication."""
-        errors: dict[str, str] = {}
-
-        coordinator = self.hass.data[DOMAIN].get("coordinator")
-        if not coordinator:
-            return await self.async_step_menu()
-
-        patients = coordinator.storage.get_patients()
-        if not patients:
-            errors["base"] = "no_patients"
-            return self.async_show_form(
-                step_id="add_medication",
-                errors=errors,
-                description_placeholders={
-                    "error": "Please add a patient first"
-                },
-            )
-
-        if user_input is not None:
-            medication_data = {**user_input}
-            if await coordinator.add_medication(medication_data):
-                return await self.async_step_menu()
-            errors["base"] = "add_failed"
-
-        schema = {
-            vol.Required("patient_id"): vol.In(
-                {p["id"]: p["name"] for p in patients}
-            ),
-            **ADD_MEDICATION_SCHEMA.schema
-        }
-
-        return self.async_show_form(
-            step_id="add_medication",
-            data_schema=vol.Schema(schema),
-            errors=errors,
-        )
-
     async def async_step_select_patient(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Select a patient to manage medications for."""
+        """Select a patient to manage."""
         coordinator = self.hass.data[DOMAIN].get("coordinator")
         if not coordinator:
             return await self.async_step_menu()
 
         patients = coordinator.storage.get_patients()
         if not patients:
-            return await self.async_step_menu()
+            return self.async_show_form(
+                step_id="select_patient",
+                errors={"base": "no_patients"},
+            )
 
         if user_input is not None:
             self.selected_patient_id = user_input["patient_id"]
-            return await self.async_step_manage_medications()
+            return await self.async_step_patient_menu()
 
         return self.async_show_form(
             step_id="select_patient",
-            data_schema=vol.Schema({
-                vol.Required("patient_id"): vol.In(
-                    {p["id"]: p["name"] for p in patients}
-                ),
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Required("patient_id"): vol.In(
+                        {p["id"]: p["name"] for p in patients}
+                    ),
+                }
+            ),
         )
 
-    async def async_step_manage_medications(
+    async def async_step_patient_menu(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage medications for the selected patient."""
-        coordinator = self.hass.data[DOMAIN].get("coordinator")
-        if not coordinator or not self.selected_patient_id:
-            return await self.async_step_menu()
-
-        medications = coordinator.storage.get_medications_for_patient(self.selected_patient_id)
-        
+        """Show the patient management menu."""
         if user_input is not None:
-            if user_input["action"] == "add":
+            if user_input["action"] == "add_medication":
                 return await self.async_step_add_medication()
-            elif user_input["action"] == "remove":
-                self.selected_medication_id = user_input.get("medication_id")
-                return await self.async_step_remove_medication()
+            elif user_input["action"] == "remove_medication":
+                return await self.async_step_select_medication()
             elif user_input["action"] == "back":
                 return await self.async_step_menu()
 
-        actions = {
-            "add": "Add New Medication",
-            "back": "Back to Menu",
-        }
-
-        schema = {
-            vol.Required("action"): vol.In(actions),
-        }
-
-        if medications:
-            actions["remove"] = "Remove Medication"
-            schema[vol.Optional("medication_id")] = vol.In(
-                {m["id"]: m["name"] for m in medications}
-            )
-
         return self.async_show_form(
-            step_id="manage_medications",
-            data_schema=vol.Schema(schema),
+            step_id="patient_menu",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("action"): vol.In(
+                        {
+                            "add_medication": "Add Medication",
+                            "remove_medication": "Remove Medication",
+                            "back": "Back to Main Menu",
+                        }
+                    )
+                }
+            ),
         )
 
-    async def async_step_remove_medication(
+    async def async_step_add_medication(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Confirm and remove a medication."""
+        """Add a medication to the selected patient."""
+        errors = {}
+
         if user_input is not None:
-            if user_input.get("confirm"):
-                coordinator = self.hass.data[DOMAIN].get("coordinator")
-                if coordinator and self.selected_medication_id:
-                    await coordinator.remove_medication(self.selected_medication_id)
-            return await self.async_step_manage_medications()
+            coordinator = self.hass.data[DOMAIN].get("coordinator")
+            if coordinator:
+                medication_data = {
+                    "patient_id": self.selected_patient_id,
+                    **user_input,
+                }
+                if await coordinator.add_medication(medication_data):
+                    return await self.async_step_patient_menu()
+            errors["base"] = "add_failed"
 
         return self.async_show_form(
-            step_id="remove_medication",
-            data_schema=vol.Schema({
-                vol.Required("confirm"): bool,
-            }),
-            description_placeholders={
-                "medication": "selected medication"  # You could get the actual name here
-            },
+            step_id="add_medication",
+            data_schema=ADD_MEDICATION_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_select_medication(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Select a medication to remove."""
+        coordinator = self.hass.data[DOMAIN].get("coordinator")
+        if not coordinator:
+            return await self.async_step_patient_menu()
+
+        medications = coordinator.storage.get_medications_for_patient(self.selected_patient_id)
+        if not medications:
+            return self.async_show_form(
+                step_id="select_medication",
+                errors={"base": "no_medications"},
+            )
+
+        if user_input is not None:
+            await coordinator.remove_medication(user_input["medication_id"])
+            return await self.async_step_patient_menu()
+
+        return self.async_show_form(
+            step_id="select_medication",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("medication_id"): vol.In(
+                        {m["id"]: m["name"] for m in medications}
+                    ),
+                }
+            ),
         ) 
