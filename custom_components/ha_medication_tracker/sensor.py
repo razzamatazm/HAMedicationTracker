@@ -19,7 +19,18 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
 )
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    ATTR_PATIENT_NAME,
+    ATTR_PATIENT_WEIGHT,
+    ATTR_PATIENT_WEIGHT_UNIT,
+    ATTR_PATIENT_AGE,
+    ATTR_MEDICATION_NAME,
+    ATTR_MEDICATION_DOSAGE,
+    ATTR_MEDICATION_UNIT,
+    ATTR_MEDICATION_FREQUENCY,
+    ATTR_MEDICATION_INSTRUCTIONS,
+)
 from .coordinator import MedicationTrackerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,13 +53,19 @@ async def async_setup_entry(
         _LOGGER.error("Cannot set up sensors - coordinator not found")
         return
 
+    _LOGGER.debug("Setting up sensors with coordinator data: %s", coordinator.data)
+    
     entities = []
 
     # Add a next dose sensor
     entities.append(MedicationNextDoseSensor(coordinator, entry))
 
     # Add patient sensors
-    for patient in coordinator.data.get("patients", []):
+    patients = coordinator.data.get("patients", [])
+    _LOGGER.debug("Creating sensors for patients: %s", patients)
+    
+    for patient in patients:
+        _LOGGER.debug("Creating sensor for patient: %s", patient)
         entities.append(PatientSensor(coordinator, entry, patient))
 
     async_add_entities(entities)
@@ -101,7 +118,7 @@ class MedicationNextDoseSensor(CoordinatorEntity, SensorEntity):
         next_doses = self.coordinator.data.get("next_doses", {})
 
         for medication_id, medication in medications.items():
-            med_name = medication.get("name", medication_id)
+            med_name = medication.get(ATTR_MEDICATION_NAME, medication_id)
 
             if medication_id in next_doses:
                 dose_info = next_doses[medication_id]
@@ -129,13 +146,15 @@ class PatientSensor(CoordinatorEntity, SensorEntity):
         self._patient = patient
         self._attr_unique_id = f"{entry.entry_id}_patient_{patient['id']}"
         
-        # Set the entity name to the patient's name
-        self._attr_name = patient.get("name", "Unknown Patient")
+        # Get patient name from either the new or old field name
+        patient_name = patient.get(ATTR_PATIENT_NAME) or patient.get("name", "Unknown Patient")
+        self._attr_name = patient_name
+        _LOGGER.debug("Creating patient sensor with name: %s", self._attr_name)
         
         # Create a custom entity description for this patient
         self.entity_description = SensorEntityDescription(
             key=f"patient_{patient['id']}",
-            name=self._attr_name,
+            name=patient_name,
             icon="mdi:account",
         )
 
@@ -150,7 +169,9 @@ class PatientSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> str:
         """Return the patient's name."""
-        return self._patient.get("name", "Unknown")
+        name = self._patient.get(ATTR_PATIENT_NAME) or self._patient.get("name", "Unknown")
+        _LOGGER.debug("Patient sensor %s returning native value: %s", self._attr_unique_id, name)
+        return name
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -161,9 +182,9 @@ class PatientSensor(CoordinatorEntity, SensorEntity):
         patient_id = self._patient["id"]
         attributes = {
             "id": patient_id,
-            "weight": self._patient.get("weight"),
-            "weight_unit": self._patient.get("weight_unit", "kg"),
-            "age": self._patient.get("age"),
+            "weight": self._patient.get(ATTR_PATIENT_WEIGHT) or self._patient.get("weight"),
+            "weight_unit": self._patient.get(ATTR_PATIENT_WEIGHT_UNIT) or self._patient.get("weight_unit", "kg"),
+            "age": self._patient.get(ATTR_PATIENT_AGE) or self._patient.get("age"),
         }
 
         # Add medication information
@@ -172,11 +193,11 @@ class PatientSensor(CoordinatorEntity, SensorEntity):
             if med.get("patient_id") == patient_id:
                 next_dose_info = self.coordinator.data.get("next_doses", {}).get(med_id, {})
                 medication_info = {
-                    "name": med.get("name"),
-                    "dosage": med.get("dosage"),
-                    "unit": med.get("unit"),
-                    "frequency": med.get("frequency"),
-                    "instructions": med.get("instructions"),
+                    "name": med.get(ATTR_MEDICATION_NAME),
+                    "dosage": med.get(ATTR_MEDICATION_DOSAGE),
+                    "unit": med.get(ATTR_MEDICATION_UNIT),
+                    "frequency": med.get(ATTR_MEDICATION_FREQUENCY),
+                    "instructions": med.get(ATTR_MEDICATION_INSTRUCTIONS),
                     "available_now": next_dose_info.get("available_now", False),
                     "next_dose": next_dose_info.get("next_time"),
                 }
@@ -194,4 +215,5 @@ class PatientSensor(CoordinatorEntity, SensorEntity):
                 "last_temperature_time": latest_temp.get("timestamp"),
             })
 
+        _LOGGER.debug("Patient sensor %s attributes: %s", self._attr_unique_id, attributes)
         return attributes 

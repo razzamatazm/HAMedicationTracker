@@ -33,12 +33,15 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
     async def async_setup(self) -> None:
         """Load storage data."""
         await self.storage.async_load()
+        _LOGGER.debug("Storage loaded, performing initial refresh")
         await self.async_refresh()
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Fetch data."""
         # Get all data from storage
         patients = self.storage.get_patients()
+        _LOGGER.debug("Retrieved patients from storage: %s", patients)
+        
         medications = self.storage.get_medications()
         doses = self.storage.get_doses()
         temperatures = self.storage.get_temperatures()

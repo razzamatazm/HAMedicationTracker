@@ -38,21 +38,21 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 # Schema for adding a patient
 ADD_PATIENT_SCHEMA = vol.Schema(
     {
-        vol.Required("name"): str,
-        vol.Optional("weight"): vol.Coerce(float),
-        vol.Optional("weight_unit", default="kg"): vol.In(["kg", "lb"]),
-        vol.Optional("age"): vol.Coerce(int),
+        vol.Required(ATTR_PATIENT_NAME): str,
+        vol.Optional(ATTR_PATIENT_WEIGHT): vol.Coerce(float),
+        vol.Optional(ATTR_PATIENT_WEIGHT_UNIT, default="kg"): vol.In(["kg", "lb"]),
+        vol.Optional(ATTR_PATIENT_AGE): vol.Coerce(int),
     }
 )
 
 # Schema for adding a medication
 ADD_MEDICATION_SCHEMA = vol.Schema(
     {
-        vol.Required("name"): str,
-        vol.Optional("dosage"): vol.Coerce(float),
-        vol.Optional("unit", default="mg"): str,
-        vol.Optional("frequency", default=6): vol.Coerce(float),
-        vol.Optional("instructions"): str,
+        vol.Required(ATTR_MEDICATION_NAME): str,
+        vol.Optional(ATTR_MEDICATION_DOSAGE): vol.Coerce(float),
+        vol.Optional(ATTR_MEDICATION_UNIT, default="mg"): str,
+        vol.Optional(ATTR_MEDICATION_FREQUENCY, default=6): vol.Coerce(float),
+        vol.Optional(ATTR_MEDICATION_INSTRUCTIONS): str,
     }
 )
 
@@ -88,6 +88,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self.patients = []
+        self.medications = {}
         self.current_patient = None
         self.name = None
 
@@ -125,6 +126,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data={
                         "name": self.name,
                         "patients": self.patients,
+                        "medications": self.medications,
+                        "doses": {},
+                        "temperatures": {},
                     },
                 )
             return await self.async_step_add_patient()
@@ -134,7 +138,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=PATIENT_SELECTION_SCHEMA,
             description_placeholders={
                 "patient_count": str(len(self.patients)),
-                "patient_list": ", ".join(p["name"] for p in self.patients),
+                "patient_list": ", ".join(p.get(ATTR_PATIENT_NAME, "") for p in self.patients),
             },
         )
 
@@ -149,11 +153,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 patient_id = str(uuid.uuid4())
                 patient_data = {
                     "id": patient_id,
-                    "name": user_input["name"],
-                    "weight": user_input.get("weight"),
-                    "weight_unit": user_input.get("weight_unit", "kg"),
-                    "age": user_input.get("age"),
-                    "medications": [],
+                    ATTR_PATIENT_NAME: user_input[ATTR_PATIENT_NAME],
+                    ATTR_PATIENT_WEIGHT: user_input.get(ATTR_PATIENT_WEIGHT),
+                    ATTR_PATIENT_WEIGHT_UNIT: user_input.get(ATTR_PATIENT_WEIGHT_UNIT, "kg"),
+                    ATTR_PATIENT_AGE: user_input.get(ATTR_PATIENT_AGE),
                 }
                 self.patients.append(patient_data)
                 self.current_patient = patient_data
@@ -177,13 +180,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_patient_selection()
             return await self.async_step_add_medication()
 
+        # Get medications for current patient
+        patient_medications = [
+            med for med_id, med in self.medications.items()
+            if med.get("patient_id") == self.current_patient["id"]
+        ]
+
         return self.async_show_form(
             step_id="medication_selection",
             data_schema=MEDICATION_SELECTION_SCHEMA,
             description_placeholders={
-                "patient_name": self.current_patient["name"],
-                "medication_count": str(len(self.current_patient["medications"])),
-                "medication_list": ", ".join(m["name"] for m in self.current_patient["medications"]),
+                "patient_name": self.current_patient.get(ATTR_PATIENT_NAME, "Unknown"),
+                "medication_count": str(len(patient_medications)),
+                "medication_list": ", ".join(m[ATTR_MEDICATION_NAME] for m in patient_medications),
             },
         )
 
@@ -199,13 +208,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 medication_data = {
                     "id": medication_id,
                     "patient_id": self.current_patient["id"],
-                    "name": user_input["name"],
-                    "dosage": user_input.get("dosage"),
-                    "unit": user_input.get("unit", "mg"),
-                    "frequency": user_input.get("frequency", 6),
-                    "instructions": user_input.get("instructions"),
+                    ATTR_MEDICATION_NAME: user_input[ATTR_MEDICATION_NAME],
+                    ATTR_MEDICATION_DOSAGE: user_input.get(ATTR_MEDICATION_DOSAGE),
+                    ATTR_MEDICATION_UNIT: user_input.get(ATTR_MEDICATION_UNIT, "mg"),
+                    ATTR_MEDICATION_FREQUENCY: user_input.get(ATTR_MEDICATION_FREQUENCY, 6),
+                    ATTR_MEDICATION_INSTRUCTIONS: user_input.get(ATTR_MEDICATION_INSTRUCTIONS),
                 }
-                self.current_patient["medications"].append(medication_data)
+                self.medications[medication_id] = medication_data
                 return await self.async_step_medication_selection()
             except Exception as ex:
                 _LOGGER.exception("Error adding medication: %s", ex)
@@ -344,32 +353,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             ),
         )
 
-    async def async_step_add_medication(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Add a medication to the selected patient."""
-        errors = {}
-
-        if user_input is not None:
-            coordinator = self.hass.data[DOMAIN].get("coordinator")
-            if coordinator:
-                try:
-                    medication_data = {
-                        "patient_id": self.selected_patient_id,
-                        **user_input,
-                    }
-                    if await coordinator.add_medication(medication_data):
-                        return await self.async_step_patient_menu()
-                except Exception as ex:
-                    _LOGGER.exception("Error adding medication: %s", ex)
-            errors["base"] = "add_failed"
-
-        return self.async_show_form(
-            step_id="add_medication",
-            data_schema=ADD_MEDICATION_SCHEMA,
-            errors=errors,
-        )
-
     async def async_step_select_medication(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -378,7 +361,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if not coordinator:
             return await self.async_step_patient_menu()
 
-        medications = coordinator.storage.get_medications_for_patient(self.selected_patient_id)
+        # Get medications for current patient
+        medications = [
+            med for med_id, med in coordinator.storage.get_medications().items()
+            if med.get("patient_id") == self.selected_patient_id
+        ]
+        
         if not medications:
             return self.async_show_form(
                 step_id="select_medication",
@@ -401,7 +389,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Required("medication_id"): vol.In(
-                        {m["id"]: m["name"] for m in medications}
+                        {m["id"]: m[ATTR_MEDICATION_NAME] for m in medications}
                     ),
                 }
             ),
