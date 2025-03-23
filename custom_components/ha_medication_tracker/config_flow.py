@@ -28,13 +28,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Schema for the initial configuration
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required("name", default=DEFAULT_NAME): str,
-    }
-)
-
 # Schema for adding a patient
 ADD_PATIENT_SCHEMA = vol.Schema(
     {
@@ -90,20 +83,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.patients = []
         self.medications = {}
         self.current_patient = None
-        self.name = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
-        if user_input is not None:
-            self.name = user_input["name"]
-            return await self.async_step_patient_selection()
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
-        )
+        return await self.async_step_patient_selection()
 
     async def async_step_patient_selection(
         self, user_input: dict[str, Any] | None = None
@@ -122,9 +107,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         },
                     )
                 return self.async_create_entry(
-                    title=self.name,
+                    title="Medication Tracker",
                     data={
-                        "name": self.name,
+                        "name": "Medication Tracker",
                         "patients": self.patients,
                         "medications": self.medications,
                         "doses": {},

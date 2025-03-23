@@ -9,8 +9,8 @@
                 }
             },
             "patient_selection": {
-                "title": "Patient Setup",
-                "description": "Current patients: {patient_list} (Total: {patient_count})",
+                "title": "Add Patients",
+                "description": "Add patients to track medications for. Current patients: {patient_list} (Total: {patient_count})",
                 "data": {
                     "action": "Choose Action"
                 }
@@ -19,10 +19,10 @@
                 "title": "Add New Patient",
                 "description": "Enter patient details",
                 "data": {
-                    "name": "Patient Name",
-                    "weight": "Weight",
-                    "weight_unit": "Weight Unit",
-                    "age": "Age"
+                    "patient_name": "Patient Name",
+                    "patient_weight": "Weight",
+                    "patient_weight_unit": "Weight Unit",
+                    "patient_age": "Age"
                 }
             },
             "medication_selection": {
@@ -36,11 +36,11 @@
                 "title": "Add New Medication",
                 "description": "Enter medication details",
                 "data": {
-                    "name": "Medication Name",
-                    "dosage": "Dosage Amount",
-                    "unit": "Unit",
-                    "frequency": "Hours Between Doses",
-                    "instructions": "Instructions"
+                    "medication_name": "Medication Name",
+                    "medication_dosage": "Dosage Amount",
+                    "medication_unit": "Unit",
+                    "medication_frequency": "Hours Between Doses",
+                    "medication_instructions": "Instructions"
                 }
             }
         },
@@ -53,7 +53,7 @@
         "step": {
             "menu": {
                 "title": "Medication Tracker Options",
-                "description": "Choose what you would like to do",
+                "description": "What would you like to do?",
                 "data": {
                     "next_step": "Choose Action"
                 }
@@ -62,10 +62,10 @@
                 "title": "Add New Patient",
                 "description": "Enter patient details",
                 "data": {
-                    "name": "Patient Name",
-                    "weight": "Weight",
-                    "weight_unit": "Weight Unit",
-                    "age": "Age"
+                    "patient_name": "Patient Name",
+                    "patient_weight": "Weight",
+                    "patient_weight_unit": "Weight Unit",
+                    "patient_age": "Age"
                 }
             },
             "select_patient": {
@@ -77,25 +77,14 @@
             },
             "patient_menu": {
                 "title": "Patient Management",
-                "description": "Choose what you would like to do with this patient",
+                "description": "What would you like to do with this patient?",
                 "data": {
                     "action": "Choose Action"
                 }
             },
-            "add_medication": {
-                "title": "Add New Medication",
-                "description": "Enter medication details",
-                "data": {
-                    "name": "Medication Name",
-                    "dosage": "Dosage Amount",
-                    "unit": "Unit",
-                    "frequency": "Hours Between Doses",
-                    "instructions": "Instructions"
-                }
-            },
             "select_medication": {
                 "title": "Select Medication",
-                "description": "Choose a medication to remove",
+                "description": "Choose a medication to manage",
                 "data": {
                     "medication_id": "Medication"
                 }
