@@ -52,24 +52,14 @@ ADD_MEDICATION_SCHEMA = vol.Schema(
 # Schema for patient selection
 PATIENT_SELECTION_SCHEMA = vol.Schema(
     {
-        vol.Required("action"): vol.In(
-            {
-                "add": "Add Patient",
-                "done": "Done Adding Patients",
-            }
-        )
+        vol.Required("action"): vol.In(["add", "done"])
     }
 )
 
 # Schema for medication selection
 MEDICATION_SELECTION_SCHEMA = vol.Schema(
     {
-        vol.Required("action"): vol.In(
-            {
-                "add": "Add Medication",
-                "done": "Done Adding Medications",
-            }
-        )
+        vol.Required("action"): vol.In(["add", "done"])
     }
 )
 
@@ -177,7 +167,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "patient_name": self.current_patient.get(ATTR_PATIENT_NAME, "Unknown"),
                 "medication_count": str(len(patient_medications)),
-                "medication_list": ", ".join(m[ATTR_MEDICATION_NAME] for m in patient_medications),
+                "medication_list": ", ".join(med.get(ATTR_MEDICATION_NAME, "") for med in patient_medications),
             },
         )
 

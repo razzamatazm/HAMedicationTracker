@@ -1,18 +1,14 @@
 {
     "config": {
         "step": {
-            "user": {
-                "title": "Set Up Medication Tracker",
-                "description": "Enter a name for your Medication Tracker integration",
-                "data": {
-                    "name": "Name"
-                }
-            },
             "patient_selection": {
-                "title": "Add Patients",
-                "description": "Add patients to track medications for. Current patients: {patient_list} (Total: {patient_count})",
+                "title": "Set Up Medication Tracker",
+                "description": "Let's start by adding patients to track medications for. Current patients: {patient_list} (Total: {patient_count})",
                 "data": {
-                    "action": "Choose Action"
+                    "action": {
+                        "add": "Add Patient",
+                        "done": "Done Adding Patients"
+                    }
                 }
             },
             "add_patient": {
@@ -29,7 +25,10 @@
                 "title": "Medication Setup for {patient_name}",
                 "description": "Current medications: {medication_list} (Total: {medication_count})",
                 "data": {
-                    "action": "Choose Action"
+                    "action": {
+                        "add": "Add Medication",
+                        "done": "Done Adding Medications"
+                    }
                 }
             },
             "add_medication": {
@@ -55,7 +54,10 @@
                 "title": "Medication Tracker Options",
                 "description": "What would you like to do?",
                 "data": {
-                    "next_step": "Choose Action"
+                    "next_step": {
+                        "add_patient": "Add New Patient",
+                        "manage_patient": "Manage Existing Patient"
+                    }
                 }
             },
             "add_patient": {
@@ -79,7 +81,11 @@
                 "title": "Patient Management",
                 "description": "What would you like to do with this patient?",
                 "data": {
-                    "action": "Choose Action"
+                    "action": {
+                        "add_medication": "Add Medication",
+                        "remove_medication": "Remove Medication",
+                        "back": "Back to Main Menu"
+                    }
                 }
             },
             "select_medication": {
