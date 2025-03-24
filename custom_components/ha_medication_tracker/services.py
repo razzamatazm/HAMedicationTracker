@@ -4,9 +4,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 import voluptuous as vol
+from typing import Any, Dict
 
 from homeassistant.core import HomeAssistant, ServiceCall
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import selector
 
 from .const import (
     DOMAIN,
@@ -79,24 +81,42 @@ REMOVE_MEDICATION_SCHEMA = vol.Schema(
 )
 
 # Service schema for recording a dose
-RECORD_DOSE_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_MEDICATION_ID): str,
-        vol.Optional(ATTR_DOSE_TIMESTAMP, default=lambda: datetime.now().isoformat()): str,
-        vol.Optional(ATTR_DOSE_AMOUNT): vol.Coerce(float),
-        vol.Optional(ATTR_DOSE_UNIT): str,
-    }
-)
+RECORD_DOSE_SCHEMA = vol.Schema({
+    vol.Required(ATTR_MEDICATION_ID): cv.string,
+    vol.Required(ATTR_DOSE_AMOUNT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=0,
+            step="any",
+            mode="box",
+        ),
+    ),
+    vol.Required(ATTR_DOSE_UNIT): cv.string,
+    vol.Optional(ATTR_DOSE_TIMESTAMP): selector.DateTimeSelector(
+        selector.DateTimeSelectorConfig(
+            enabled=True,
+        ),
+    ),
+})
 
 # Service schema for recording a temperature
-RECORD_TEMPERATURE_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_PATIENT_ID): str,
-        vol.Required(ATTR_TEMPERATURE_VALUE): vol.Coerce(float),
-        vol.Optional(ATTR_TEMPERATURE_TIMESTAMP, default=lambda: datetime.now().isoformat()): str,
-        vol.Optional(ATTR_TEMPERATURE_UNIT, default="°C"): str,
-    }
-)
+RECORD_TEMPERATURE_SCHEMA = vol.Schema({
+    vol.Required(ATTR_PATIENT_ID): cv.string,
+    vol.Required(ATTR_TEMPERATURE_VALUE): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=35,
+            max=42,
+            step=0.1,
+            mode="box",
+            unit_of_measurement="°C"
+        ),
+    ),
+    vol.Optional(ATTR_TEMPERATURE_TIMESTAMP): selector.DateTimeSelector(
+        selector.DateTimeSelectorConfig(
+            enabled=True,
+        ),
+    ),
+    vol.Optional(ATTR_TEMPERATURE_UNIT, default="°C"): cv.string,
+})
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -159,43 +179,53 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         
     async def async_handle_record_dose(call: ServiceCall) -> None:
         """Handle the record_dose service call."""
-        medication_id = call.data.get(ATTR_MEDICATION_ID)
-        
+        medication_id = call.data[ATTR_MEDICATION_ID]
         dose_data = {
-            "timestamp": call.data.get(ATTR_DOSE_TIMESTAMP),
-            "amount": call.data.get(ATTR_DOSE_AMOUNT),
-            "unit": call.data.get(ATTR_DOSE_UNIT),
+            "amount": call.data[ATTR_DOSE_AMOUNT],
+            "unit": call.data[ATTR_DOSE_UNIT],
         }
         
-        # Convert datetime object to ISO string if provided
-        if isinstance(dose_data["timestamp"], datetime):
-            dose_data["timestamp"] = dose_data["timestamp"].isoformat()
+        # Use provided timestamp or current time
+        if ATTR_DOSE_TIMESTAMP in call.data:
+            dose_data["timestamp"] = call.data[ATTR_DOSE_TIMESTAMP]
+        else:
+            dose_data["timestamp"] = datetime.now().isoformat()
             
         result = await coordinator.record_dose(medication_id, dose_data)
-        
         if result:
-            _LOGGER.info("Recorded dose for medication ID %s", medication_id)
+            _LOGGER.info(
+                "Recorded dose of %s %s for medication ID %s at %s",
+                dose_data["amount"],
+                dose_data["unit"],
+                medication_id,
+                dose_data["timestamp"]
+            )
         else:
             _LOGGER.warning("Failed to record dose for medication ID %s - not found", medication_id)
         
     async def async_handle_record_temperature(call: ServiceCall) -> None:
         """Handle the record_temperature service call."""
-        patient_id = call.data.get(ATTR_PATIENT_ID)
-        
+        patient_id = call.data[ATTR_PATIENT_ID]
         temperature_data = {
-            "timestamp": call.data.get(ATTR_TEMPERATURE_TIMESTAMP),
-            "value": call.data.get(ATTR_TEMPERATURE_VALUE),
-            "unit": call.data.get(ATTR_TEMPERATURE_UNIT),
+            "value": call.data[ATTR_TEMPERATURE_VALUE],
+            "unit": call.data.get(ATTR_TEMPERATURE_UNIT, "°C"),
         }
         
-        # Convert datetime object to ISO string if provided
-        if isinstance(temperature_data["timestamp"], datetime):
-            temperature_data["timestamp"] = temperature_data["timestamp"].isoformat()
+        # Use provided timestamp or current time
+        if ATTR_TEMPERATURE_TIMESTAMP in call.data:
+            temperature_data["timestamp"] = call.data[ATTR_TEMPERATURE_TIMESTAMP]
+        else:
+            temperature_data["timestamp"] = datetime.now().isoformat()
             
         result = await coordinator.record_temperature(patient_id, temperature_data)
-        
         if result:
-            _LOGGER.info("Recorded temperature for patient ID %s", patient_id)
+            _LOGGER.info(
+                "Recorded temperature of %s%s for patient ID %s at %s",
+                temperature_data["value"],
+                temperature_data["unit"],
+                patient_id,
+                temperature_data["timestamp"]
+            )
         else:
             _LOGGER.warning("Failed to record temperature for patient ID %s - not found", patient_id)
     

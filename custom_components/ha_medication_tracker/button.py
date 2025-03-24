@@ -126,8 +126,8 @@ class RecordDoseButton(CoordinatorEntity, ButtonEntity):
             # Create the service data with default values from medication
             service_data = {
                 "medication_id": self._medication["id"],
-                "dose_amount": self._medication.get(ATTR_MEDICATION_DOSAGE),
-                "dose_unit": self._medication.get(ATTR_MEDICATION_UNIT),
+                "dose_amount": self._medication.get(ATTR_MEDICATION_DOSAGE, 0),
+                "dose_unit": self._medication.get(ATTR_MEDICATION_UNIT, "mg"),
             }
             
             # Call the service with the input form
@@ -136,14 +136,10 @@ class RecordDoseButton(CoordinatorEntity, ButtonEntity):
                 "record_dose",
                 service_data,
                 blocking=True,
-                target={"entity_id": self.entity_id},
             )
             
             # Force an immediate data update
             await self.coordinator.async_refresh()
-            
-            # Schedule the next regular update
-            self.coordinator.async_set_updated_data(self.coordinator.data)
             
         except Exception as ex:
             _LOGGER.error("Failed to record dose: %s", ex)
@@ -188,6 +184,8 @@ class RecordTemperatureButton(CoordinatorEntity, ButtonEntity):
             # Create the service data
             service_data = {
                 "patient_id": self._patient["id"],
+                "temperature_value": 37.0,  # Default normal body temperature
+                "temperature_unit": "°C",
             }
             
             # Call the service with the input form
@@ -196,14 +194,10 @@ class RecordTemperatureButton(CoordinatorEntity, ButtonEntity):
                 "record_temperature",
                 service_data,
                 blocking=True,
-                target={"entity_id": self.entity_id},
             )
             
             # Force an immediate data update
             await self.coordinator.async_refresh()
-            
-            # Schedule the next regular update
-            self.coordinator.async_set_updated_data(self.coordinator.data)
             
         except Exception as ex:
             _LOGGER.error("Failed to record temperature: %s", ex)
