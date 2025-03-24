@@ -81,20 +81,20 @@ REMOVE_MEDICATION_SCHEMA = vol.Schema(
 # Service schema for recording a dose
 RECORD_DOSE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_MEDICATION_ID): cv.string,
-        vol.Optional(ATTR_DOSE_TIMESTAMP): cv.datetime,
+        vol.Required(ATTR_MEDICATION_ID): str,
+        vol.Optional(ATTR_DOSE_TIMESTAMP, default=lambda: datetime.now().isoformat()): str,
         vol.Optional(ATTR_DOSE_AMOUNT): vol.Coerce(float),
-        vol.Optional(ATTR_DOSE_UNIT): cv.string,
+        vol.Optional(ATTR_DOSE_UNIT): str,
     }
 )
 
 # Service schema for recording a temperature
 RECORD_TEMPERATURE_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_PATIENT_ID): cv.string,
-        vol.Optional(ATTR_TEMPERATURE_TIMESTAMP): cv.datetime,
+        vol.Required(ATTR_PATIENT_ID): str,
         vol.Required(ATTR_TEMPERATURE_VALUE): vol.Coerce(float),
-        vol.Optional(ATTR_TEMPERATURE_UNIT, default="°C"): cv.string,
+        vol.Optional(ATTR_TEMPERATURE_TIMESTAMP, default=lambda: datetime.now().isoformat()): str,
+        vol.Optional(ATTR_TEMPERATURE_UNIT, default="°C"): str,
     }
 )
 

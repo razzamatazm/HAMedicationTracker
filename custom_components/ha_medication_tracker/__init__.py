@@ -18,7 +18,7 @@ from .services import async_setup_services
 _LOGGER = logging.getLogger(__name__)
 
 # List of platforms to support
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON, Platform.SWITCH]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

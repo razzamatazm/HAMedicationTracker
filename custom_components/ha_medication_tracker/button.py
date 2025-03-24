@@ -20,6 +20,14 @@ from .const import (
     DOMAIN,
     ATTR_PATIENT_NAME,
     ATTR_MEDICATION_NAME,
+    ATTR_MEDICATION_DOSAGE,
+    ATTR_MEDICATION_UNIT,
+    ATTR_DOSE_TIMESTAMP,
+    ATTR_DOSE_AMOUNT,
+    ATTR_DOSE_UNIT,
+    ATTR_TEMPERATURE_VALUE,
+    ATTR_TEMPERATURE_TIMESTAMP,
+    ATTR_TEMPERATURE_UNIT,
 )
 from .coordinator import MedicationTrackerCoordinator
 
@@ -115,13 +123,40 @@ class RecordDoseButton(CoordinatorEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         try:
-            await self.coordinator.record_dose(
-                patient_id=self._patient["id"],
-                medication_id=self._medication["id"],
+            # Create the service data with default values from medication
+            service_data = {
+                "medication_id": self._medication["id"],
+                "dose_amount": self._medication.get(ATTR_MEDICATION_DOSAGE),
+                "dose_unit": self._medication.get(ATTR_MEDICATION_UNIT),
+            }
+            
+            # Call the service with the input form
+            await self.hass.services.async_call(
+                DOMAIN,
+                "record_dose",
+                service_data,
+                blocking=True,
+                target={"entity_id": self.entity_id},
             )
-            await self.coordinator.async_request_refresh()
+            
+            # Force an immediate data update
+            await self.coordinator.async_refresh()
+            
+            # Schedule the next regular update
+            self.coordinator.async_set_updated_data(self.coordinator.data)
+            
         except Exception as ex:
             _LOGGER.error("Failed to record dose: %s", ex)
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return additional state attributes."""
+        return {
+            "default_dosage": self._medication.get(ATTR_MEDICATION_DOSAGE),
+            "default_unit": self._medication.get(ATTR_MEDICATION_UNIT),
+            "patient_name": self._patient.get(ATTR_PATIENT_NAME),
+            "medication_name": self._medication.get(ATTR_MEDICATION_NAME),
+        }
 
 class RecordTemperatureButton(CoordinatorEntity, ButtonEntity):
     """Button for recording a patient's temperature."""
@@ -150,9 +185,33 @@ class RecordTemperatureButton(CoordinatorEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         try:
-            await self.coordinator.record_temperature(
-                patient_id=self._patient["id"],
+            # Create the service data
+            service_data = {
+                "patient_id": self._patient["id"],
+            }
+            
+            # Call the service with the input form
+            await self.hass.services.async_call(
+                DOMAIN,
+                "record_temperature",
+                service_data,
+                blocking=True,
+                target={"entity_id": self.entity_id},
             )
-            await self.coordinator.async_request_refresh()
+            
+            # Force an immediate data update
+            await self.coordinator.async_refresh()
+            
+            # Schedule the next regular update
+            self.coordinator.async_set_updated_data(self.coordinator.data)
+            
         except Exception as ex:
-            _LOGGER.error("Failed to record temperature: %s", ex) 
+            _LOGGER.error("Failed to record temperature: %s", ex)
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return additional state attributes."""
+        return {
+            "patient_name": self._patient.get(ATTR_PATIENT_NAME),
+            "default_unit": "°C",
+        } 

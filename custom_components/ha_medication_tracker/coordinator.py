@@ -84,8 +84,17 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
     def _calculate_next_doses(self, medications: Dict[str, Any], doses: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
         """Calculate next available dose for each medication."""
         next_doses = {}
+        now = datetime.now()
         
         for medication_id, medication in medications.items():
+            # Skip disabled medications
+            if medication.get("disabled", False):
+                next_doses[medication_id] = {
+                    "available_now": False,
+                    "next_time": None,
+                }
+                continue
+            
             if medication_id not in doses or not doses[medication_id]:
                 # No doses for this medication yet
                 next_doses[medication_id] = {
@@ -93,7 +102,7 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
                     "next_time": None,
                 }
                 continue
-                
+            
             # Sort doses by timestamp in descending order
             sorted_doses = sorted(
                 doses[medication_id], 
@@ -107,19 +116,21 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
                     "next_time": None,
                 }
                 continue
-                
+            
             latest_dose = sorted_doses[0]
             frequency_hours = medication.get("frequency", 6)  # Default to 6 hours
             
             last_dose_time = datetime.fromisoformat(latest_dose["timestamp"])
             next_dose_time = last_dose_time + timedelta(hours=frequency_hours)
             
-            now = datetime.now()
             available_now = now >= next_dose_time
             
             next_doses[medication_id] = {
                 "available_now": available_now,
                 "next_time": next_dose_time.isoformat() if not available_now else None,
+                "last_dose_time": last_dose_time.isoformat(),
+                "last_dose_amount": latest_dose.get("amount"),
+                "last_dose_unit": latest_dose.get("unit"),
             }
             
         return next_doses
@@ -162,7 +173,11 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             
         result = self.storage.add_dose(medication_id, dose_data)
         await self.storage.async_save()
-        await self.async_refresh()
+        
+        # Update data immediately
+        data = await self._async_update_data()
+        self.async_set_updated_data(data)
+        
         return result
         
     async def record_temperature(self, patient_id: str, temperature_data: Dict[str, Any] = None) -> bool:
@@ -175,7 +190,11 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             
         result = self.storage.add_temperature(patient_id, temperature_data)
         await self.storage.async_save()
-        await self.async_refresh()
+        
+        # Update data immediately
+        data = await self._async_update_data()
+        self.async_set_updated_data(data)
+        
         return result
         
     async def async_shutdown(self) -> None:
