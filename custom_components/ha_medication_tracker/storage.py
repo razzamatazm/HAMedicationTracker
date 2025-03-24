@@ -1,189 +1,225 @@
-"""Storage handling for Medication Tracker."""
-from __future__ import annotations
-
+"""Storage for Medication Tracker."""
+import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import Any, Dict, List, Optional
+import uuid
 
-from homeassistant.const import EVENT_HOMEASSISTANT_START
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
+import voluptuous as vol
+
+from .const import DOMAIN, STORAGE_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_VERSION = 1
-STORAGE_KEY = "ha_medication_tracker"
-DATA_SCHEMA = {
-    "patients": [],
-    "medications": {},
-    "doses": {},
-    "temperatures": {}
-}
-
-
 class MedicationStorage:
-    """Class that handles storage of medication data."""
+    """Class to store medication data."""
 
     def __init__(self, hass: HomeAssistant) -> None:
-        """Initialize the storage."""
+        """Initialize storage."""
         self.hass = hass
-        self.store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
-        self._data: Dict[str, Any] = None
+        self.store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.storage")
+        self._data = None
+        self._loaded = False
 
-    async def async_load(self) -> Dict[str, Any]:
-        """Load the data from disk."""
-        if self._data is not None:
-            return self._data
+    async def async_load(self) -> None:
+        """Load data from disk."""
+        if self._loaded:
+            return
 
         data = await self.store.async_load()
-        
-        if data is None:
-            self._data = dict(DATA_SCHEMA)
-        else:
+        if data:
             self._data = data
-
-        return self._data
+        else:
+            self._data = {
+                "patients": {},
+                "medications": {},
+                "doses": {},
+                "temperatures": {},
+            }
+        self._loaded = True
 
     async def async_save(self) -> None:
-        """Save the data to disk."""
-        if self._data is not None:
-            await self.store.async_save(self._data)
+        """Save data to disk."""
+        if not self._loaded:
+            await self.async_load()
+        await self.store.async_save(self._data)
 
-    def get_patients(self) -> List[Dict[str, Any]]:
+    def _ensure_loaded(self) -> None:
+        """Ensure data is loaded."""
+        if not self._loaded:
+            self.hass.loop.run_until_complete(self.async_load())
+
+    def get_patients(self) -> Dict[str, Any]:
         """Get all patients."""
-        if not self._data:
-            return []
+        self._ensure_loaded()
         return self._data["patients"]
 
     def get_patient(self, patient_id: str) -> Optional[Dict[str, Any]]:
-        """Get a specific patient."""
-        for patient in self._data["patients"]:
-            if patient.get("id") == patient_id:
-                return patient
-        return None
+        """Get a patient by ID."""
+        self._ensure_loaded()
+        return self._data["patients"].get(patient_id)
 
-    def add_patient(self, patient: Dict[str, Any]) -> str:
-        """Add a patient."""
-        patient_id = patient.get("id")
-        if not patient_id:
-            # Generate a unique ID
-            patient_id = f"patient_{len(self._data['patients']) + 1}"
-            patient["id"] = patient_id
-            
-        # Check if patient already exists
-        existing_patient = self.get_patient(patient_id)
-        if existing_patient:
-            # Update existing patient
-            for key, value in patient.items():
-                existing_patient[key] = value
-        else:
-            # Add new patient
-            self._data["patients"].append(patient)
-            
+    def add_patient(self, patient_data: Dict[str, Any]) -> str:
+        """Add a new patient."""
+        self._ensure_loaded()
+        
+        # Generate a unique ID
+        patient_id = str(uuid.uuid4())
+        patient_data["id"] = patient_id
+        
+        # Add to storage
+        self._data["patients"][patient_id] = patient_data
+        
         return patient_id
 
-    def remove_patient(self, patient_id: str) -> bool:
-        """Remove a patient."""
-        for i, patient in enumerate(self._data["patients"]):
-            if patient.get("id") == patient_id:
-                self._data["patients"].pop(i)
-                
-                # Clean up related medications
-                meds_to_remove = []
-                for med_id, med in self._data["medications"].items():
-                    if med.get("patient_id") == patient_id:
-                        meds_to_remove.append(med_id)
-                        
-                for med_id in meds_to_remove:
-                    self.remove_medication(med_id)
-                    
-                return True
-        return False
-
-    def get_medications(self, patient_id: Optional[str] = None) -> Dict[str, Any]:
-        """Get medications, optionally filtered by patient."""
-        if not self._data:
-            return {}
+    def update_patient(self, patient_id: str, patient_data: Dict[str, Any]) -> bool:
+        """Update an existing patient."""
+        self._ensure_loaded()
+        
+        if patient_id not in self._data["patients"]:
+            return False
             
-        if patient_id:
-            return {
-                med_id: med 
-                for med_id, med in self._data["medications"].items() 
-                if med.get("patient_id") == patient_id
-            }
+        # Update with new data
+        self._data["patients"][patient_id].update(patient_data)
+        
+        return True
+
+    def delete_patient(self, patient_id: str) -> bool:
+        """Delete a patient."""
+        self._ensure_loaded()
+        
+        if patient_id not in self._data["patients"]:
+            return False
+            
+        # Remove the patient
+        self._data["patients"].pop(patient_id)
+        
+        # Remove associated medications
+        med_ids_to_remove = []
+        for med_id, med in self._data["medications"].items():
+            if med.get("patient_id") == patient_id:
+                med_ids_to_remove.append(med_id)
+                
+        for med_id in med_ids_to_remove:
+            self._data["medications"].pop(med_id)
+            if med_id in self._data["doses"]:
+                self._data["doses"].pop(med_id)
+        
+        # Remove temperatures
+        if patient_id in self._data["temperatures"]:
+            self._data["temperatures"].pop(patient_id)
+            
+        return True
+
+    def get_medications(self) -> Dict[str, Any]:
+        """Get all medications."""
+        self._ensure_loaded()
         return self._data["medications"]
 
     def get_medication(self, medication_id: str) -> Optional[Dict[str, Any]]:
-        """Get a specific medication."""
+        """Get a medication by ID."""
+        self._ensure_loaded()
         return self._data["medications"].get(medication_id)
 
-    def add_medication(self, medication: Dict[str, Any]) -> str:
-        """Add a medication."""
-        medication_id = medication.get("id")
-        if not medication_id:
-            # Generate a unique ID
-            medication_id = f"medication_{len(self._data['medications']) + 1}"
-            medication["id"] = medication_id
+    def add_medication(self, medication_data: Dict[str, Any]) -> str:
+        """Add a new medication."""
+        self._ensure_loaded()
         
-        self._data["medications"][medication_id] = medication
+        # Generate a unique ID
+        medication_id = str(uuid.uuid4())
+        medication_data["id"] = medication_id
+        
+        # Set defaults for new medication
+        if "temporary" not in medication_data:
+            medication_data["temporary"] = False
+        if "disabled" not in medication_data:
+            medication_data["disabled"] = False
+        
+        # Add to storage
+        self._data["medications"][medication_id] = medication_data
+        
         return medication_id
 
-    def remove_medication(self, medication_id: str) -> bool:
-        """Remove a medication."""
-        if medication_id in self._data["medications"]:
-            del self._data["medications"][medication_id]
-            
-            # Clean up related doses
-            if medication_id in self._data["doses"]:
-                del self._data["doses"][medication_id]
-                
-            return True
-        return False
-
-    def get_doses(self, medication_id: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Get doses, optionally filtered by medication."""
-        if not self._data:
-            return {}
-            
-        if medication_id:
-            return {
-                med_id: doses
-                for med_id, doses in self._data["doses"].items()
-                if med_id == medication_id
-            }
-        return self._data["doses"]
-
-    def add_dose(self, medication_id: str, dose: Dict[str, Any]) -> bool:
-        """Add a dose record."""
+    def update_medication(self, medication_id: str, medication_data: Dict[str, Any]) -> bool:
+        """Update an existing medication."""
+        self._ensure_loaded()
+        
         if medication_id not in self._data["medications"]:
             return False
             
+        # Update with new data while preserving the ID
+        medication_data["id"] = medication_id
+        self._data["medications"][medication_id] = medication_data
+        
+        return True
+
+    def delete_medication(self, medication_id: str) -> bool:
+        """Delete a medication."""
+        self._ensure_loaded()
+        
+        if medication_id not in self._data["medications"]:
+            return False
+            
+        # Remove the medication
+        self._data["medications"].pop(medication_id)
+        
+        # Remove associated doses
+        if medication_id in self._data["doses"]:
+            self._data["doses"].pop(medication_id)
+            
+        return True
+
+    def get_doses(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Get all doses."""
+        self._ensure_loaded()
+        return self._data["doses"]
+
+    def get_medication_doses(self, medication_id: str) -> List[Dict[str, Any]]:
+        """Get doses for a medication."""
+        self._ensure_loaded()
+        return self._data["doses"].get(medication_id, [])
+
+    def add_dose(self, medication_id: str, dose_data: Dict[str, Any]) -> bool:
+        """Add a new dose for a medication."""
+        self._ensure_loaded()
+        
+        if medication_id not in self._data["medications"]:
+            _LOGGER.error("Cannot add dose for unknown medication: %s", medication_id)
+            return False
+            
+        # Ensure there's a record for this medication
         if medication_id not in self._data["doses"]:
             self._data["doses"][medication_id] = []
             
-        self._data["doses"][medication_id].append(dose)
+        # Add the dose
+        self._data["doses"][medication_id].append(dose_data)
+        
         return True
 
-    def get_temperatures(self, patient_id: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Get temperatures, optionally filtered by patient."""
-        if not self._data:
-            return {}
-            
-        if patient_id:
-            return {
-                pat_id: temps
-                for pat_id, temps in self._data["temperatures"].items()
-                if pat_id == patient_id
-            }
+    def get_temperatures(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Get all temperatures."""
+        self._ensure_loaded()
         return self._data["temperatures"]
 
-    def add_temperature(self, patient_id: str, temperature: Dict[str, Any]) -> bool:
-        """Add a temperature record."""
-        if not self.get_patient(patient_id):
+    def get_patient_temperatures(self, patient_id: str) -> List[Dict[str, Any]]:
+        """Get temperatures for a patient."""
+        self._ensure_loaded()
+        return self._data["temperatures"].get(patient_id, [])
+
+    def add_temperature(self, patient_id: str, temperature_data: Dict[str, Any]) -> bool:
+        """Add a new temperature for a patient."""
+        self._ensure_loaded()
+        
+        if patient_id not in self._data["patients"]:
             return False
             
+        # Ensure there's a record for this patient
         if patient_id not in self._data["temperatures"]:
             self._data["temperatures"][patient_id] = []
             
-        self._data["temperatures"][patient_id].append(temperature)
+        # Add the temperature
+        self._data["temperatures"][patient_id].append(temperature_data)
+        
         return True 

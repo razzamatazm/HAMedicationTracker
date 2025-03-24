@@ -1,225 +1,170 @@
 """Services for the Medication Tracker integration."""
-from __future__ import annotations
-
 import logging
-from datetime import datetime
+from typing import Any, Dict, List, Optional, cast
+
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 import homeassistant.helpers.config_validation as cv
 
-from .const import (
-    DOMAIN,
-    SERVICE_ADD_PATIENT,
-    SERVICE_REMOVE_PATIENT,
-    SERVICE_ADD_MEDICATION,
-    SERVICE_REMOVE_MEDICATION,
-    SERVICE_RECORD_DOSE,
-    SERVICE_RECORD_TEMPERATURE,
-    ATTR_PATIENT_ID,
-    ATTR_PATIENT_NAME,
-    ATTR_PATIENT_WEIGHT,
-    ATTR_PATIENT_WEIGHT_UNIT,
-    ATTR_PATIENT_AGE,
-    ATTR_MEDICATION_ID,
-    ATTR_MEDICATION_NAME,
-    ATTR_MEDICATION_DOSAGE,
-    ATTR_MEDICATION_UNIT,
-    ATTR_MEDICATION_FREQUENCY,
-    ATTR_MEDICATION_MAX_DAILY_DOSES,
-    ATTR_MEDICATION_INSTRUCTIONS,
-    ATTR_DOSE_TIMESTAMP,
-    ATTR_DOSE_AMOUNT,
-    ATTR_DOSE_UNIT,
-    ATTR_TEMPERATURE_TIMESTAMP,
-    ATTR_TEMPERATURE_VALUE,
-    ATTR_TEMPERATURE_UNIT,
-)
+from .const import DOMAIN, ATTR_MEDICATION_NAME, ATTR_MEDICATION_DOSAGE, ATTR_MEDICATION_UNIT
 from .coordinator import MedicationTrackerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Service schema for adding a patient
-ADD_PATIENT_SCHEMA = vol.Schema(
-    {
-        vol.Optional(ATTR_PATIENT_ID): cv.string,
-        vol.Required(ATTR_PATIENT_NAME): cv.string,
-        vol.Optional(ATTR_PATIENT_WEIGHT): vol.Coerce(float),
-        vol.Optional(ATTR_PATIENT_WEIGHT_UNIT, default="kg"): cv.string,
-        vol.Optional(ATTR_PATIENT_AGE): vol.Coerce(int),
-    }
-)
+# Service schemas
+RECORD_DOSE_SCHEMA = vol.Schema({
+    vol.Required("medication_id"): cv.string,
+    vol.Optional("amount"): vol.Coerce(float),
+    vol.Optional("unit"): cv.string,
+    vol.Optional("notes"): cv.string,
+})
 
-# Service schema for removing a patient
-REMOVE_PATIENT_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_PATIENT_ID): cv.string,
-    }
-)
+TOGGLE_MEDICATION_SCHEMA = vol.Schema({
+    vol.Required("medication_id"): cv.string,
+    vol.Required("enabled"): cv.boolean,
+})
 
-# Service schema for adding a medication
-ADD_MEDICATION_SCHEMA = vol.Schema(
-    {
-        vol.Optional(ATTR_MEDICATION_ID): cv.string,
-        vol.Required(ATTR_PATIENT_ID): cv.string,
-        vol.Required(ATTR_MEDICATION_NAME): cv.string,
-        vol.Optional(ATTR_MEDICATION_DOSAGE): vol.Coerce(float),
-        vol.Optional(ATTR_MEDICATION_UNIT, default="mg"): cv.string,
-        vol.Optional(ATTR_MEDICATION_FREQUENCY, default=6): vol.Coerce(float),  # Hours
-        vol.Optional(ATTR_MEDICATION_MAX_DAILY_DOSES): vol.Coerce(int),
-        vol.Optional(ATTR_MEDICATION_INSTRUCTIONS): cv.string,
-    }
-)
+ADD_MEDICATION_SCHEMA = vol.Schema({
+    vol.Required("patient_id"): cv.string,
+    vol.Required(ATTR_MEDICATION_NAME): cv.string,
+    vol.Required(ATTR_MEDICATION_DOSAGE): vol.Coerce(float),
+    vol.Required(ATTR_MEDICATION_UNIT): cv.string,
+    vol.Required("frequency"): vol.Coerce(float),
+    vol.Optional("instructions"): cv.string,
+    vol.Optional("temporary"): cv.boolean,
+})
 
-# Service schema for removing a medication
-REMOVE_MEDICATION_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_MEDICATION_ID): cv.string,
-    }
-)
+UPDATE_MEDICATION_SCHEMA = vol.Schema({
+    vol.Required("medication_id"): cv.string,
+    vol.Optional(ATTR_MEDICATION_NAME): cv.string,
+    vol.Optional(ATTR_MEDICATION_DOSAGE): vol.Coerce(float),
+    vol.Optional(ATTR_MEDICATION_UNIT): cv.string,
+    vol.Optional("frequency"): vol.Coerce(float),
+    vol.Optional("instructions"): cv.string,
+    vol.Optional("temporary"): cv.boolean,
+    vol.Optional("disabled"): cv.boolean,
+})
 
-# Service schema for recording a dose
-RECORD_DOSE_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_MEDICATION_ID): str,
-        vol.Optional(ATTR_DOSE_TIMESTAMP, default=lambda: datetime.now().isoformat()): str,
-        vol.Optional(ATTR_DOSE_AMOUNT): vol.Coerce(float),
-        vol.Optional(ATTR_DOSE_UNIT): str,
-    }
-)
+DELETE_MEDICATION_SCHEMA = vol.Schema({
+    vol.Required("medication_id"): cv.string,
+})
 
-# Service schema for recording a temperature
-RECORD_TEMPERATURE_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_PATIENT_ID): str,
-        vol.Required(ATTR_TEMPERATURE_VALUE): vol.Coerce(float),
-        vol.Optional(ATTR_TEMPERATURE_TIMESTAMP, default=lambda: datetime.now().isoformat()): str,
-        vol.Optional(ATTR_TEMPERATURE_UNIT, default="°C"): str,
-    }
-)
-
-
-async def async_setup_services(hass: HomeAssistant) -> None:
-    """Set up the Medication Tracker services."""
+async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Set up services for the Medication Tracker integration."""
+    coordinator = hass.data[DOMAIN][entry.entry_id]
     
-    # Get the coordinator
-    coordinator = hass.data[DOMAIN].get("coordinator")
-    if not coordinator:
-        _LOGGER.error("Cannot set up services - coordinator not found")
-        return
+    async def handle_record_dose(call: ServiceCall) -> None:
+        """Handle the record_dose service call."""
+        medication_id = call.data["medication_id"]
+        amount = call.data.get("amount")
+        unit = call.data.get("unit")
+        notes = call.data.get("notes")
         
-    async def async_handle_add_patient(call: ServiceCall) -> None:
-        """Handle the add_patient service call."""
-        patient_data = {
-            "id": call.data.get(ATTR_PATIENT_ID),
-            "name": call.data.get(ATTR_PATIENT_NAME),
-            "weight": call.data.get(ATTR_PATIENT_WEIGHT),
-            "weight_unit": call.data.get(ATTR_PATIENT_WEIGHT_UNIT),
-            "age": call.data.get(ATTR_PATIENT_AGE),
-        }
+        dose_data = {}
+        if amount is not None:
+            dose_data["amount"] = amount
+        if unit is not None:
+            dose_data["unit"] = unit
+        if notes is not None:
+            dose_data["notes"] = notes
+            
+        success = await coordinator.record_dose(medication_id, dose_data)
+        if not success:
+            _LOGGER.error("Failed to record dose for medication %s", medication_id)
+            
+    async def handle_toggle_medication(call: ServiceCall) -> None:
+        """Handle the toggle_medication service call."""
+        medication_id = call.data["medication_id"]
+        enabled = call.data["enabled"]
         
-        patient_id = await coordinator.add_patient(patient_data)
-        _LOGGER.info("Added patient %s with ID %s", patient_data["name"], patient_id)
-        
-    async def async_handle_remove_patient(call: ServiceCall) -> None:
-        """Handle the remove_patient service call."""
-        patient_id = call.data.get(ATTR_PATIENT_ID)
-        result = await coordinator.remove_patient(patient_id)
-        
-        if result:
-            _LOGGER.info("Removed patient with ID %s", patient_id)
-        else:
-            _LOGGER.warning("Failed to remove patient with ID %s - not found", patient_id)
-        
-    async def async_handle_add_medication(call: ServiceCall) -> None:
+        success = await coordinator.toggle_medication_status(medication_id, enabled)
+        if not success:
+            _LOGGER.error("Failed to toggle medication %s to %s", medication_id, "enabled" if enabled else "disabled")
+            
+    async def handle_add_medication(call: ServiceCall) -> None:
         """Handle the add_medication service call."""
+        patient_id = call.data["patient_id"]
+        name = call.data[ATTR_MEDICATION_NAME]
+        dosage = call.data[ATTR_MEDICATION_DOSAGE]
+        unit = call.data[ATTR_MEDICATION_UNIT]
+        frequency = call.data["frequency"]
+        instructions = call.data.get("instructions", "")
+        temporary = call.data.get("temporary", False)
+        
         medication_data = {
-            "id": call.data.get(ATTR_MEDICATION_ID),
-            "patient_id": call.data.get(ATTR_PATIENT_ID),
-            "name": call.data.get(ATTR_MEDICATION_NAME),
-            "dosage": call.data.get(ATTR_MEDICATION_DOSAGE),
-            "unit": call.data.get(ATTR_MEDICATION_UNIT),
-            "frequency": call.data.get(ATTR_MEDICATION_FREQUENCY),
-            "max_daily_doses": call.data.get(ATTR_MEDICATION_MAX_DAILY_DOSES),
-            "instructions": call.data.get(ATTR_MEDICATION_INSTRUCTIONS),
+            "patient_id": patient_id,
+            ATTR_MEDICATION_NAME: name,
+            ATTR_MEDICATION_DOSAGE: dosage,
+            ATTR_MEDICATION_UNIT: unit,
+            "frequency": frequency,
+            "instructions": instructions,
+            "temporary": temporary,
+            "disabled": False,
         }
         
         medication_id = await coordinator.add_medication(medication_data)
-        _LOGGER.info("Added medication %s with ID %s", medication_data["name"], medication_id)
-        
-    async def async_handle_remove_medication(call: ServiceCall) -> None:
-        """Handle the remove_medication service call."""
-        medication_id = call.data.get(ATTR_MEDICATION_ID)
-        result = await coordinator.remove_medication(medication_id)
-        
-        if result:
-            _LOGGER.info("Removed medication with ID %s", medication_id)
-        else:
-            _LOGGER.warning("Failed to remove medication with ID %s - not found", medication_id)
-        
-    async def async_handle_record_dose(call: ServiceCall) -> None:
-        """Handle the record_dose service call."""
-        medication_id = call.data.get(ATTR_MEDICATION_ID)
-        
-        dose_data = {
-            "timestamp": call.data.get(ATTR_DOSE_TIMESTAMP),
-            "amount": call.data.get(ATTR_DOSE_AMOUNT),
-            "unit": call.data.get(ATTR_DOSE_UNIT),
-        }
-        
-        # Convert datetime object to ISO string if provided
-        if isinstance(dose_data["timestamp"], datetime):
-            dose_data["timestamp"] = dose_data["timestamp"].isoformat()
+        if not medication_id:
+            _LOGGER.error("Failed to add medication %s for patient %s", name, patient_id)
             
-        result = await coordinator.record_dose(medication_id, dose_data)
+    async def handle_update_medication(call: ServiceCall) -> None:
+        """Handle the update_medication service call."""
+        medication_id = call.data["medication_id"]
         
-        if result:
-            _LOGGER.info("Recorded dose for medication ID %s", medication_id)
-        else:
-            _LOGGER.warning("Failed to record dose for medication ID %s - not found", medication_id)
-        
-    async def async_handle_record_temperature(call: ServiceCall) -> None:
-        """Handle the record_temperature service call."""
-        patient_id = call.data.get(ATTR_PATIENT_ID)
-        
-        temperature_data = {
-            "timestamp": call.data.get(ATTR_TEMPERATURE_TIMESTAMP),
-            "value": call.data.get(ATTR_TEMPERATURE_VALUE),
-            "unit": call.data.get(ATTR_TEMPERATURE_UNIT),
-        }
-        
-        # Convert datetime object to ISO string if provided
-        if isinstance(temperature_data["timestamp"], datetime):
-            temperature_data["timestamp"] = temperature_data["timestamp"].isoformat()
+        # Get current medication data
+        medications = coordinator.data.get("medications", {})
+        if medication_id not in medications:
+            _LOGGER.error("Medication %s not found", medication_id)
+            return
             
-        result = await coordinator.record_temperature(patient_id, temperature_data)
+        medication_data = dict(medications[medication_id])
         
-        if result:
-            _LOGGER.info("Recorded temperature for patient ID %s", patient_id)
-        else:
-            _LOGGER.warning("Failed to record temperature for patient ID %s - not found", patient_id)
+        # Update with new values
+        for key in call.data:
+            if key != "medication_id":
+                medication_data[key] = call.data[key]
+                
+        success = await coordinator.update_medication(medication_id, medication_data)
+        if not success:
+            _LOGGER.error("Failed to update medication %s", medication_id)
+            
+    async def handle_delete_medication(call: ServiceCall) -> None:
+        """Handle the delete_medication service call."""
+        medication_id = call.data["medication_id"]
+        
+        success = await coordinator.delete_medication(medication_id)
+        if not success:
+            _LOGGER.error("Failed to delete medication %s", medication_id)
     
     # Register services
     hass.services.async_register(
-        DOMAIN, SERVICE_ADD_PATIENT, async_handle_add_patient, schema=ADD_PATIENT_SCHEMA
+        DOMAIN, "record_dose", handle_record_dose, schema=RECORD_DOSE_SCHEMA
     )
     
     hass.services.async_register(
-        DOMAIN, SERVICE_REMOVE_PATIENT, async_handle_remove_patient, schema=REMOVE_PATIENT_SCHEMA
+        DOMAIN, "toggle_medication", handle_toggle_medication, schema=TOGGLE_MEDICATION_SCHEMA
     )
     
     hass.services.async_register(
-        DOMAIN, SERVICE_ADD_MEDICATION, async_handle_add_medication, schema=ADD_MEDICATION_SCHEMA
+        DOMAIN, "add_medication", handle_add_medication, schema=ADD_MEDICATION_SCHEMA
     )
     
     hass.services.async_register(
-        DOMAIN, SERVICE_REMOVE_MEDICATION, async_handle_remove_medication, schema=REMOVE_MEDICATION_SCHEMA
+        DOMAIN, "update_medication", handle_update_medication, schema=UPDATE_MEDICATION_SCHEMA
     )
     
     hass.services.async_register(
-        DOMAIN, SERVICE_RECORD_DOSE, async_handle_record_dose, schema=RECORD_DOSE_SCHEMA
+        DOMAIN, "delete_medication", handle_delete_medication, schema=DELETE_MEDICATION_SCHEMA
     )
-    
-    hass.services.async_register(
-        DOMAIN, SERVICE_RECORD_TEMPERATURE, async_handle_record_temperature, schema=RECORD_TEMPERATURE_SCHEMA
-    ) 
+
+async def async_unload_services(hass: HomeAssistant) -> None:
+    """Unload Medication Tracker services."""
+    for service_name in [
+        "record_dose", 
+        "toggle_medication", 
+        "add_medication", 
+        "update_medication", 
+        "delete_medication"
+    ]:
+        hass.services.async_remove(DOMAIN, service_name) 
