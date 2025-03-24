@@ -7,6 +7,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
@@ -18,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 class MedicationTrackerCoordinator(DataUpdateCoordinator):
     """Medication Tracker coordinator."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
@@ -27,12 +28,33 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(minutes=5),
         )
         
+        # Store the config entry
+        self.config_entry = entry
+        
         # Initialize storage
         self.storage = MedicationStorage(hass)
         
     async def async_setup(self) -> None:
-        """Load storage data."""
+        """Load storage data and initial config."""
+        # Load storage
         await self.storage.async_load()
+        
+        # Initialize with config entry data if storage is empty
+        if not self.storage.get_patients():
+            entry_data = self.config_entry.data
+            _LOGGER.debug("Initializing storage with config entry data: %s", entry_data)
+            
+            # Add patients
+            for patient in entry_data.get("patients", []):
+                self.storage.add_patient(patient)
+            
+            # Add medications
+            for med_id, medication in entry_data.get("medications", {}).items():
+                self.storage.add_medication(medication)
+            
+            # Save the initialized data
+            await self.storage.async_save()
+        
         _LOGGER.debug("Storage loaded, performing initial refresh")
         await self.async_refresh()
 
@@ -130,8 +152,11 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
         await self.async_refresh()
         return result
         
-    async def record_dose(self, medication_id: str, dose_data: Dict[str, Any]) -> bool:
+    async def record_dose(self, medication_id: str, dose_data: Dict[str, Any] = None) -> bool:
         """Record a dose for a medication."""
+        if dose_data is None:
+            dose_data = {}
+            
         if "timestamp" not in dose_data:
             dose_data["timestamp"] = datetime.now().isoformat()
             
@@ -140,12 +165,19 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
         await self.async_refresh()
         return result
         
-    async def record_temperature(self, patient_id: str, temperature_data: Dict[str, Any]) -> bool:
+    async def record_temperature(self, patient_id: str, temperature_data: Dict[str, Any] = None) -> bool:
         """Record a temperature for a patient."""
+        if temperature_data is None:
+            temperature_data = {}
+            
         if "timestamp" not in temperature_data:
             temperature_data["timestamp"] = datetime.now().isoformat()
             
         result = self.storage.add_temperature(patient_id, temperature_data)
         await self.storage.async_save()
         await self.async_refresh()
-        return result 
+        return result
+        
+    async def async_shutdown(self) -> None:
+        """Save data when shutting down."""
+        await self.storage.async_save() 

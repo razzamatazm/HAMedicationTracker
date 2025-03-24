@@ -29,30 +29,42 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Medication Tracker from a config entry."""
-    # Initialize the data storage
-    hass.data.setdefault(DOMAIN, {})
-    
-    # Create the coordinator
-    coordinator = MedicationTrackerCoordinator(hass, entry)
-    await coordinator.async_setup()
-    
-    # Store the coordinator
-    hass.data[DOMAIN]["coordinator"] = coordinator
-    hass.data[DOMAIN][entry.entry_id] = entry.data
-
-    # Set up the platforms
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    
-    # Set up services
-    await async_setup_services(hass)
-
-    return True
+    try:
+        # Create coordinator
+        coordinator = MedicationTrackerCoordinator(hass, entry)
+        await coordinator.async_setup()
+        
+        # Store coordinator reference
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][entry.entry_id] = coordinator
+        
+        # Set up platforms
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        
+        return True
+        
+    except Exception as err:
+        _LOGGER.exception("Failed to set up Medication Tracker: %s", err)
+        return False
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        coordinator = hass.data[DOMAIN].pop("coordinator")
+    try:
+        # Get coordinator
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        
+        # Save data before unloading
         await coordinator.async_shutdown()
-
-    return unload_ok 
+        
+        # Unload platforms
+        unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        
+        if unload_ok:
+            hass.data[DOMAIN].pop(entry.entry_id)
+            
+        return unload_ok
+        
+    except Exception as err:
+        _LOGGER.exception("Error unloading Medication Tracker: %s", err)
+        return False 
