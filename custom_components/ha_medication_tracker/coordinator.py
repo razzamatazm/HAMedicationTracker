@@ -173,11 +173,7 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             
         result = self.storage.add_dose(medication_id, dose_data)
         await self.storage.async_save()
-        
-        # Update data immediately
-        data = await self._async_update_data()
-        self.async_set_updated_data(data)
-        
+        await self.async_refresh()
         return result
         
     async def record_temperature(self, patient_id: str, temperature_data: Dict[str, Any] = None) -> bool:
@@ -190,11 +186,7 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             
         result = self.storage.add_temperature(patient_id, temperature_data)
         await self.storage.async_save()
-        
-        # Update data immediately
-        data = await self._async_update_data()
-        self.async_set_updated_data(data)
-        
+        await self.async_refresh()
         return result
         
     async def async_shutdown(self) -> None:

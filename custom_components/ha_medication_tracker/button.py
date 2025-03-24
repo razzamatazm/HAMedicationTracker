@@ -138,13 +138,7 @@ class RecordDoseButton(CoordinatorEntity, ButtonEntity):
                 blocking=True,
                 target={"entity_id": self.entity_id},
             )
-            
-            # Force an immediate data update
-            await self.coordinator.async_refresh()
-            
-            # Schedule the next regular update
-            self.coordinator.async_set_updated_data(self.coordinator.data)
-            
+            await self.coordinator.async_request_refresh()
         except Exception as ex:
             _LOGGER.error("Failed to record dose: %s", ex)
 
@@ -198,13 +192,7 @@ class RecordTemperatureButton(CoordinatorEntity, ButtonEntity):
                 blocking=True,
                 target={"entity_id": self.entity_id},
             )
-            
-            # Force an immediate data update
-            await self.coordinator.async_refresh()
-            
-            # Schedule the next regular update
-            self.coordinator.async_set_updated_data(self.coordinator.data)
-            
+            await self.coordinator.async_request_refresh()
         except Exception as ex:
             _LOGGER.error("Failed to record temperature: %s", ex)
 
