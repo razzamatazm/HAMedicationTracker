@@ -99,7 +99,10 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
                 # No doses for this medication yet
                 next_doses[medication_id] = {
                     "available_now": True,
-                    "next_time": None,
+                    "next_time": now.isoformat(),  # Available immediately
+                    "last_dose_time": None,
+                    "last_dose_amount": None,
+                    "last_dose_unit": None,
                 }
                 continue
             
@@ -113,7 +116,10 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             if not sorted_doses:
                 next_doses[medication_id] = {
                     "available_now": True,
-                    "next_time": None,
+                    "next_time": now.isoformat(),  # Available immediately
+                    "last_dose_time": None,
+                    "last_dose_amount": None,
+                    "last_dose_unit": None,
                 }
                 continue
             
@@ -127,7 +133,7 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             
             next_doses[medication_id] = {
                 "available_now": available_now,
-                "next_time": next_dose_time.isoformat() if not available_now else None,
+                "next_time": now.isoformat() if available_now else next_dose_time.isoformat(),  # Always provide a time
                 "last_dose_time": last_dose_time.isoformat(),
                 "last_dose_amount": latest_dose.get("amount"),
                 "last_dose_unit": latest_dose.get("unit"),
@@ -173,10 +179,20 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             
         result = self.storage.add_dose(medication_id, dose_data)
         if result:
+            # Save updated data
             await self.storage.async_save()
-            # Force an immediate refresh of the coordinator data
-            await self.async_refresh()
-            # The refresh will automatically notify listeners with the new data
+            
+            # Force an immediate data refresh
+            new_data = await self._async_update_data()
+            
+            # Update the coordinator with new data
+            self.async_set_updated_data(new_data)
+            
+            # Log that we've updated data after recording a dose
+            _LOGGER.debug(
+                "Recorded dose for medication %s, updated data and notified listeners",
+                medication_id
+            )
         return result
         
     async def record_temperature(self, patient_id: str, temperature_data: Dict[str, Any] = None) -> bool:
