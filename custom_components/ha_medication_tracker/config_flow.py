@@ -63,7 +63,8 @@ MEDICATION_SELECTION_SCHEMA = vol.Schema(
     }
 )
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+@config_entries.HANDLERS.register(DOMAIN)
+class MedicationTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Medication Tracker."""
 
     VERSION = 1
