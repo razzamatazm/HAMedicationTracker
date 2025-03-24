@@ -1,7 +1,6 @@
 """Constants for the Medication Tracker integration."""
 
 DOMAIN = "ha_medication_tracker"
-STORAGE_VERSION = 1
 
 # Configuration and options
 CONF_PATIENTS = "patients"

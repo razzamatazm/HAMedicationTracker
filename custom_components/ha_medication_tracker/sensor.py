@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -41,25 +41,32 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Medication Tracker sensors."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    
+    coordinator = hass.data[DOMAIN].get("coordinator")
+    if not coordinator:
+        _LOGGER.error("Cannot set up sensors - coordinator not found")
+        return
+
+    _LOGGER.debug("Setting up Medication Tracker sensors")
     entities = []
     
-    # Add patient sensors
-    patients = coordinator.data.get("patients", {})
-    for patient_id, patient in patients.items():
-        # Create a device for this patient
+    # Create entities for each patient
+    patients = coordinator.data.get("patients", [])
+    _LOGGER.debug("Found %d patients to create sensors for", len(patients))
+    
+    for patient in patients:
+        _LOGGER.debug("Creating sensors for patient: %s", patient.get(ATTR_PATIENT_NAME))
+        # Create the patient device info
         device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"patient_{patient_id}")},
-            name=f"Patient: {patient.get(ATTR_PATIENT_NAME, 'Unknown')}",
+            identifiers={(DOMAIN, f"{entry.entry_id}_{patient['id']}")},
+            name=patient.get(ATTR_PATIENT_NAME, "Unknown Patient"),
             manufacturer="Medication Tracker",
-            model="Patient",
-            configuration_url="",
+            model="Patient Profile",
+            sw_version="1.0",
         )
         
-        # Add patient info sensor
+        # Add patient status sensor
         entities.append(
-            PatientInfoSensor(
+            PatientStatusSensor(
                 coordinator=coordinator,
                 entry=entry,
                 patient=patient,
@@ -67,7 +74,7 @@ async def async_setup_entry(
             )
         )
         
-        # Add patient temperature sensor
+        # Add temperature sensor
         entities.append(
             PatientTemperatureSensor(
                 coordinator=coordinator,
@@ -86,38 +93,25 @@ async def async_setup_entry(
         
         for medication in patient_medications:
             _LOGGER.debug("Creating sensors for medication: %s", medication.get(ATTR_MEDICATION_NAME))
-            # Create medication info sensor
-            entities.append(
-                MedicationInfoSensor(
-                    coordinator=coordinator,
-                    entry=entry,
-                    patient=patient,
-                    medication=medication,
-                    device_info=device_info,
-                )
-            )
-            
             # Next dose sensor
             entities.append(
-                MedicationDoseSensor(
+                MedicationNextDoseSensor(
                     coordinator=coordinator,
                     entry=entry,
                     patient=patient,
                     medication=medication,
                     device_info=device_info,
-                    sensor_type="next_dose"
                 )
             )
             
             # Last dose sensor
             entities.append(
-                MedicationDoseSensor(
+                MedicationLastDoseSensor(
                     coordinator=coordinator,
                     entry=entry,
                     patient=patient,
                     medication=medication,
                     device_info=device_info,
-                    sensor_type="last_dose"
                 )
             )
             
@@ -131,27 +125,12 @@ async def async_setup_entry(
                     device_info=device_info,
                 )
             )
-    
-    # Register entities
+
+    _LOGGER.debug("Created %d total sensors", len(entities))
     async_add_entities(entities)
-    
-    # Store entity IDs for targeted updates
-    if DOMAIN not in hass.data:
-        hass.data[DOMAIN] = {}
-    if 'entities' not in hass.data[DOMAIN]:
-        hass.data[DOMAIN]['entities'] = {}
-    
-    # Store entity IDs by medication ID for targeted updates
-    for entity in entities:
-        if hasattr(entity, '_medication'):
-            medication_id = entity._medication["id"]
-            if medication_id not in hass.data[DOMAIN]['entities']:
-                hass.data[DOMAIN]['entities'][medication_id] = []
-            hass.data[DOMAIN]['entities'][medication_id].append(entity.entity_id)
 
-
-class PatientInfoSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for a patient's basic info."""
+class PatientStatusSensor(CoordinatorEntity, SensorEntity):
+    """Sensor representing a patient's overall status."""
 
     def __init__(
         self,
@@ -165,38 +144,31 @@ class PatientInfoSensor(CoordinatorEntity, SensorEntity):
         self._patient = patient
         self._entry = entry
         self._attr_device_info = device_info
-        self._attr_unique_id = f"{entry.entry_id}_patient_{patient['id']}_info"
-        self._attr_name = f"Patient {patient.get(ATTR_PATIENT_NAME, 'Unknown')}"
+        self._attr_unique_id = f"{entry.entry_id}_patient_{patient['id']}_status"
+        self._attr_name = f"{patient.get(ATTR_PATIENT_NAME, 'Unknown')} Status"
         
         self.entity_description = SensorEntityDescription(
-            key="patient_info",
+            key="patient_status",
             name=self._attr_name,
-            icon="mdi:account",
-            entity_category=EntityCategory.DIAGNOSTIC,
+            icon="mdi:account-check",
         )
 
     @property
     def native_value(self) -> str:
-        """Return the patient's name."""
-        return self._patient.get(ATTR_PATIENT_NAME, "Unknown")
+        """Return the patient's current status."""
+        return "Active"  # Can be expanded with more status types
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return patient details as attributes."""
+        """Return additional state attributes."""
         return {
-            "age": self._patient.get(ATTR_PATIENT_AGE),
             "weight": self._patient.get(ATTR_PATIENT_WEIGHT),
-            "weight_unit": self._patient.get(ATTR_PATIENT_WEIGHT_UNIT),
+            "weight_unit": self._patient.get(ATTR_PATIENT_WEIGHT_UNIT, "kg"),
+            "age": self._patient.get(ATTR_PATIENT_AGE),
         }
-    
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        # Force a state update when coordinator updates
-        self.async_write_ha_state()
-
 
 class PatientTemperatureSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for a patient's temperature."""
+    """Sensor representing a patient's temperature history."""
 
     def __init__(
         self,
@@ -218,15 +190,14 @@ class PatientTemperatureSensor(CoordinatorEntity, SensorEntity):
             name=self._attr_name,
             icon="mdi:thermometer",
             device_class=SensorDeviceClass.TEMPERATURE,
-            native_unit_of_measurement="°C",
         )
 
     @property
     def native_value(self) -> Optional[float]:
-        """Return the last recorded temperature."""
+        """Return the latest temperature."""
         temperatures = self.coordinator.data.get("temperatures", {}).get(self._patient["id"], [])
         if temperatures:
-            latest = sorted(temperatures, key=lambda x: x["timestamp"], reverse=True)[0]
+            latest = sorted(temperatures, key=lambda x: x["timestamp"])[-1]
             return latest.get("value")
         return None
 
@@ -238,15 +209,9 @@ class PatientTemperatureSensor(CoordinatorEntity, SensorEntity):
             "history": sorted(temperatures, key=lambda x: x["timestamp"], reverse=True)[:10],
             "unit": "°C",
         }
-    
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        # Force a state update when coordinator updates
-        self.async_write_ha_state()
 
-
-class MedicationInfoSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for medication information."""
+class MedicationNextDoseSensor(CoordinatorEntity, SensorEntity):
+    """Sensor representing when the next dose is due."""
 
     def __init__(
         self,
@@ -262,44 +227,71 @@ class MedicationInfoSensor(CoordinatorEntity, SensorEntity):
         self._medication = medication
         self._entry = entry
         self._attr_device_info = device_info
-        self._attr_unique_id = f"{entry.entry_id}_medication_{medication['id']}_info"
-        self._attr_name = f"Medication: {medication.get(ATTR_MEDICATION_NAME, 'Unknown')}"
+        self._attr_unique_id = f"{entry.entry_id}_medication_{medication['id']}_next_dose"
+        self._attr_name = f"Next Dose of {medication.get(ATTR_MEDICATION_NAME, 'Unknown')}"
         
         self.entity_description = SensorEntityDescription(
-            key="medication_info",
+            key="next_dose",
             name=self._attr_name,
-            icon="mdi:pill",
-            entity_category=EntityCategory.DIAGNOSTIC,
+            icon="mdi:clock-time-four",
+            device_class=SensorDeviceClass.TIMESTAMP,
         )
 
     @property
-    def native_value(self) -> str:
-        """Return the medication name."""
-        return self._medication.get(ATTR_MEDICATION_NAME, "Unknown")
+    def available(self) -> bool:
+        """Return if entity is available."""
+        # Only mark as available if we have valid coordinator data
+        if not self.coordinator.last_update_success:
+            return False
+        medication_id = self._medication.get("id")
+        return (
+            medication_id in self.coordinator.data.get("medications", {}) and 
+            medication_id in self.coordinator.data.get("next_doses", {})
+        )
+
+    @property
+    def native_value(self) -> Optional[datetime]:
+        """Return when the next dose is due."""
+        if not self.available:
+            return None
+            
+        next_doses = self.coordinator.data.get("next_doses", {})
+        dose_info = next_doses.get(self._medication["id"], {})
+        
+        if not dose_info.get("available_now", True) and dose_info.get("next_time"):
+            try:
+                return datetime.fromisoformat(dose_info["next_time"])
+            except (ValueError, TypeError) as err:
+                _LOGGER.error("Invalid next_time format for medication %s: %s (Error: %s)", 
+                            self._medication["id"], dose_info["next_time"], err)
+                return None
+        return None
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return medication details."""
-        return {
+        """Return additional medication information."""
+        attributes = {
             "dosage": self._medication.get(ATTR_MEDICATION_DOSAGE),
             "unit": self._medication.get(ATTR_MEDICATION_UNIT),
             "frequency": self._medication.get(ATTR_MEDICATION_FREQUENCY),
             "instructions": self._medication.get(ATTR_MEDICATION_INSTRUCTIONS),
-            "temporary": self._medication.get("temporary", False),
-            "disabled": self._medication.get("disabled", False),
         }
-    
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        # Update medication reference with latest data
-        medications = self.coordinator.data.get("medications", {})
-        if self._medication["id"] in medications:
-            self._medication = medications[self._medication["id"]]
-        self.async_write_ha_state()
+        
+        if self.available:
+            next_doses = self.coordinator.data.get("next_doses", {})
+            dose_info = next_doses.get(self._medication["id"], {})
+            
+            attributes.update({
+                "available_now": dose_info.get("available_now", False),
+                "last_dose_time": dose_info.get("last_dose_time"),
+                "last_dose_amount": dose_info.get("last_dose_amount"),
+                "last_dose_unit": dose_info.get("last_dose_unit"),
+            })
+            
+        return attributes
 
-
-class MedicationDoseSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for medication dose status."""
+class MedicationLastDoseSensor(CoordinatorEntity, SensorEntity):
+    """Sensor representing the last recorded dose."""
 
     def __init__(
         self,
@@ -308,104 +300,58 @@ class MedicationDoseSensor(CoordinatorEntity, SensorEntity):
         patient: Dict[str, Any],
         medication: Dict[str, Any],
         device_info: DeviceInfo,
-        sensor_type: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._patient = patient
         self._medication = medication
         self._entry = entry
-        self._sensor_type = sensor_type  # "last_dose" or "next_dose"
         self._attr_device_info = device_info
-        self._attr_unique_id = f"{entry.entry_id}_medication_{medication['id']}_{sensor_type}"
-        
-        med_name = medication.get(ATTR_MEDICATION_NAME, "Unknown")
-        sensor_name = "Next Dose" if sensor_type == "next_dose" else "Last Dose"
-        self._attr_name = f"{sensor_name} of {med_name}"
+        self._attr_unique_id = f"{entry.entry_id}_medication_{medication['id']}_last_dose"
+        self._attr_name = f"Last Dose of {medication.get(ATTR_MEDICATION_NAME, 'Unknown')}"
         
         self.entity_description = SensorEntityDescription(
-            key=sensor_type,
+            key="last_dose",
             name=self._attr_name,
-            icon="mdi:clock-time-four" if sensor_type == "next_dose" else "mdi:medication",
+            icon="mdi:medication",
+            device_class=SensorDeviceClass.TIMESTAMP,
         )
 
     @property
-    def native_value(self) -> str:
-        """Return the sensor state as a formatted string to ensure changes are detected."""
-        # Skip if medication is disabled
-        if self._medication.get("disabled", False):
-            return "Medication disabled" + self._get_unique_suffix()
-            
-        if self._sensor_type == "last_dose":
-            doses = self.coordinator.data.get("doses", {}).get(self._medication["id"], [])
-            if doses:
-                latest = sorted(doses, key=lambda x: x["timestamp"], reverse=True)[0]
-                timestamp = datetime.fromisoformat(latest["timestamp"])
-                formatted_time = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                return f"Last dose at {formatted_time}" + self._get_unique_suffix()
-            return "No doses recorded" + self._get_unique_suffix()
-        else:  # next_dose
-            next_doses = self.coordinator.data.get("next_doses", {})
-            dose_info = next_doses.get(self._medication["id"], {})
-            
-            if dose_info.get("available_now", False):
-                return f"Available now ({datetime.now().strftime('%H:%M:%S')})" + self._get_unique_suffix()
-            elif dose_info.get("next_time"):
-                next_time = datetime.fromisoformat(dose_info["next_time"])
-                return f"Next dose at {next_time.strftime('%Y-%m-%d %H:%M:%S')}" + self._get_unique_suffix()
-            return "Unknown" + self._get_unique_suffix()
-    
-    def _get_unique_suffix(self) -> str:
-        """Return a unique suffix to ensure state changes are detected."""
-        # This ensures the state is always unique even if the text is the same
-        now = datetime.now()
-        return f" ({now.strftime('%S.%f')})"
-            
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.last_update_success:
+            return False
+        medication_id = self._medication.get("id")
+        doses = self.coordinator.data.get("doses", {}).get(medication_id, [])
+        return medication_id in self.coordinator.data.get("medications", {}) and len(doses) > 0
+
     @property
-    def device_class(self) -> Optional[str]:
-        """Return the device class."""
-        return None  # We're using string states now, not timestamps
-    
+    def native_value(self) -> Optional[datetime]:
+        """Return when the last dose was taken."""
+        if not self.available:
+            return None
+            
+        doses = self.coordinator.data.get("doses", {}).get(self._medication["id"], [])
+        if doses:
+            try:
+                latest = sorted(doses, key=lambda x: x["timestamp"], reverse=True)[0]
+                return datetime.fromisoformat(latest["timestamp"])
+            except (ValueError, TypeError, IndexError) as err:
+                _LOGGER.error("Error getting last dose for medication %s: %s", 
+                            self._medication["id"], err)
+        return None
+
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return additional information."""
-        next_doses = self.coordinator.data.get("next_doses", {})
-        dose_info = next_doses.get(self._medication["id"], {})
+        """Return dose history."""
+        if not self.available:
+            return {"history": []}
+            
         doses = self.coordinator.data.get("doses", {}).get(self._medication["id"], [])
-        
-        attributes = {
-            "medication_id": self._medication["id"],
-            "medication_name": self._medication.get(ATTR_MEDICATION_NAME),
-            "temporary": self._medication.get("temporary", False),
-            "disabled": self._medication.get("disabled", False),
+        return {
+            "history": sorted(doses, key=lambda x: x["timestamp"], reverse=True)[:10] if doses else [],
         }
-        
-        if self._sensor_type == "next_dose":
-            attributes.update({
-                "available_now": dose_info.get("available_now", False),
-                "next_time": dose_info.get("next_time"),
-                "frequency_hours": self._medication.get("frequency"),
-            })
-        else:  # last_dose
-            if doses:
-                latest = sorted(doses, key=lambda x: x["timestamp"], reverse=True)[0]
-                attributes.update({
-                    "last_dose_time": latest.get("timestamp"),
-                    "last_dose_amount": latest.get("amount"),
-                    "last_dose_unit": latest.get("unit"),
-                    "dose_history": sorted(doses, key=lambda x: x["timestamp"], reverse=True)[:10],
-                })
-        
-        return attributes
-    
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        # Update medication reference with latest data
-        medications = self.coordinator.data.get("medications", {})
-        if self._medication["id"] in medications:
-            self._medication = medications[self._medication["id"]]
-        self.async_write_ha_state()
-
 
 class MedicationComplianceSensor(CoordinatorEntity, SensorEntity):
     """Sensor representing medication compliance."""
@@ -437,22 +383,12 @@ class MedicationComplianceSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> Optional[float]:
         """Return the compliance percentage."""
-        # Skip if medication is disabled
-        if self._medication.get("disabled", False):
-            return None
-            
         # This could be expanded with more sophisticated compliance calculation
         doses = self.coordinator.data.get("doses", {}).get(self._medication["id"], [])
         if not doses:
             return 0
         
-        # Simple compliance calculation - just for demonstration
-        return 100.0
-    
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        # Update medication reference with latest data
-        medications = self.coordinator.data.get("medications", {})
-        if self._medication["id"] in medications:
-            self._medication = medications[self._medication["id"]]
-        self.async_write_ha_state() 
+        # Simple compliance calculation - can be made more sophisticated
+        total_doses = len(doses)
+        on_time_doses = sum(1 for dose in doses if not dose.get("late", False))
+        return round((on_time_doses / total_doses) * 100, 1) if total_doses > 0 else 0 
