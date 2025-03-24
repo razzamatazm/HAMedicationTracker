@@ -25,7 +25,7 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=5),
+            update_interval=timedelta(minutes=1),
         )
         
         # Store the config entry
@@ -176,8 +176,7 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             await self.storage.async_save()
             # Force an immediate refresh of the coordinator data
             await self.async_refresh()
-            # Notify all listeners of the update
-            self.async_set_updated_data(self.data)
+            # The refresh will automatically notify listeners with the new data
         return result
         
     async def record_temperature(self, patient_id: str, temperature_data: Dict[str, Any] = None) -> bool:

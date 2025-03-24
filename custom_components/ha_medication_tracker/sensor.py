@@ -244,7 +244,12 @@ class MedicationNextDoseSensor(CoordinatorEntity, SensorEntity):
         dose_info = next_doses.get(self._medication["id"], {})
         
         if dose_info.get("next_time"):
-            return datetime.fromisoformat(dose_info["next_time"])
+            try:
+                return datetime.fromisoformat(dose_info["next_time"])
+            except (ValueError, TypeError):
+                _LOGGER.error("Invalid next_time format for medication %s: %s", 
+                            self._medication["id"], dose_info["next_time"])
+                return None
         return None
 
     @property
@@ -296,7 +301,7 @@ class MedicationLastDoseSensor(CoordinatorEntity, SensorEntity):
         """Return when the last dose was taken."""
         doses = self.coordinator.data.get("doses", {}).get(self._medication["id"], [])
         if doses:
-            latest = sorted(doses, key=lambda x: x["timestamp"])[-1]
+            latest = sorted(doses, key=lambda x: x["timestamp"], reverse=True)[0]
             return datetime.fromisoformat(latest["timestamp"])
         return None
 
