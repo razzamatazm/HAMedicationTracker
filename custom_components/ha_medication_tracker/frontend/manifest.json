@@ -1,0 +1,11 @@
+{
+  "name": "Medication Tracker Card",
+  "version": "1.0.0",
+  "description": "A custom card for displaying medication information",
+  "type": "module",
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "custom-card-helpers": "^1.9.0"
+  }
+} 
