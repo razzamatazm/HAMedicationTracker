@@ -14,6 +14,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import DOMAIN
 from .coordinator import MedicationTrackerCoordinator
 from .services import async_setup_services
+from .config_flow import ConfigFlow
 
 _LOGGER = logging.getLogger(__name__)
 
