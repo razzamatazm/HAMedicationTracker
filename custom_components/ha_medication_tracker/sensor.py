@@ -240,21 +240,12 @@ class MedicationNextDoseSensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        # Only mark as available if we have valid coordinator data
-        if not self.coordinator.last_update_success:
-            return False
-        medication_id = self._medication.get("id")
-        return (
-            medication_id in self.coordinator.data.get("medications", {}) and 
-            medication_id in self.coordinator.data.get("next_doses", {})
-        )
+        # Make available regardless of next dose calculation
+        return True
 
     @property
     def native_value(self) -> Optional[datetime]:
         """Return when the next dose is due."""
-        if not self.available:
-            return None
-            
         next_doses = self.coordinator.data.get("next_doses", {})
         dose_info = next_doses.get(self._medication["id"], {})
         
@@ -264,7 +255,6 @@ class MedicationNextDoseSensor(CoordinatorEntity, SensorEntity):
             except (ValueError, TypeError) as err:
                 _LOGGER.error("Invalid next_time format for medication %s: %s (Error: %s)", 
                             self._medication["id"], dose_info["next_time"], err)
-                return None
         return None
 
     @property
@@ -275,12 +265,13 @@ class MedicationNextDoseSensor(CoordinatorEntity, SensorEntity):
             "unit": self._medication.get(ATTR_MEDICATION_UNIT),
             "frequency": self._medication.get(ATTR_MEDICATION_FREQUENCY),
             "instructions": self._medication.get(ATTR_MEDICATION_INSTRUCTIONS),
+            "medication_id": self._medication["id"],
         }
         
-        if self.available:
-            next_doses = self.coordinator.data.get("next_doses", {})
-            dose_info = next_doses.get(self._medication["id"], {})
-            
+        next_doses = self.coordinator.data.get("next_doses", {})
+        dose_info = next_doses.get(self._medication["id"], {})
+        
+        if dose_info:
             attributes.update({
                 "available_now": dose_info.get("available_now", False),
                 "last_dose_time": dose_info.get("last_dose_time"),
@@ -320,18 +311,12 @@ class MedicationLastDoseSensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if not self.coordinator.last_update_success:
-            return False
-        medication_id = self._medication.get("id")
-        doses = self.coordinator.data.get("doses", {}).get(medication_id, [])
-        return medication_id in self.coordinator.data.get("medications", {}) and len(doses) > 0
+        # Make available regardless of dose history
+        return True
 
     @property
     def native_value(self) -> Optional[datetime]:
         """Return when the last dose was taken."""
-        if not self.available:
-            return None
-            
         doses = self.coordinator.data.get("doses", {}).get(self._medication["id"], [])
         if doses:
             try:
@@ -345,12 +330,10 @@ class MedicationLastDoseSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return dose history."""
-        if not self.available:
-            return {"history": []}
-            
         doses = self.coordinator.data.get("doses", {}).get(self._medication["id"], [])
         return {
             "history": sorted(doses, key=lambda x: x["timestamp"], reverse=True)[:10] if doses else [],
+            "medication_id": self._medication["id"],
         }
 
 class MedicationComplianceSensor(CoordinatorEntity, SensorEntity):

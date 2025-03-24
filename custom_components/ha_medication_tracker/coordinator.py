@@ -182,13 +182,28 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             dose_data["timestamp"] = datetime.now().isoformat()
         
         _LOGGER.debug("Recording dose for medication %s: %s", medication_id, dose_data)
+        
+        # Get medication info for better logging
+        medication = self.storage.get_medication(medication_id)
+        if medication:
+            _LOGGER.debug("Medication found: %s", medication.get("name", medication_id))
+        else:
+            _LOGGER.warning("Medication with ID %s not found", medication_id)
+            
         result = self.storage.add_dose(medication_id, dose_data)
         
         if result:
             _LOGGER.debug("Dose recorded successfully, saving and refreshing")
             await self.storage.async_save()
-            # Update data without waiting
-            await self.async_request_refresh()
+            
+            # Force immediate refresh
+            try:
+                fresh_data = await self._async_update_data()
+                self.async_set_updated_data(fresh_data)
+                _LOGGER.debug("Data updated with new dose information: %s", 
+                            fresh_data.get("doses", {}).get(medication_id, [])[-1:])
+            except Exception as err:
+                _LOGGER.error("Error refreshing data after dose record: %s", err)
             
         return result
         

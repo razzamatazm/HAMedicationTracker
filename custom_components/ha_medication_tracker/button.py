@@ -126,8 +126,8 @@ class RecordDoseButton(CoordinatorEntity, ButtonEntity):
             # Create the service data with default values from medication
             service_data = {
                 "medication_id": self._medication["id"],
-                "dose_amount": self._medication.get(ATTR_MEDICATION_DOSAGE),
-                "dose_unit": self._medication.get(ATTR_MEDICATION_UNIT),
+                "amount": self._medication.get(ATTR_MEDICATION_DOSAGE),
+                "unit": self._medication.get(ATTR_MEDICATION_UNIT),
             }
             
             # Call the service with the input form
