@@ -250,7 +250,14 @@ class MedicationNextDoseSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional medication information."""
+        next_doses = self.coordinator.data.get("next_doses", {})
+        dose_info = next_doses.get(self._medication["id"], {})
+        
         return {
+            "available_now": dose_info.get("available_now", False),
+            "last_dose_time": dose_info.get("last_dose_time"),
+            "last_dose_amount": dose_info.get("last_dose_amount"),
+            "last_dose_unit": dose_info.get("last_dose_unit"),
             "dosage": self._medication.get(ATTR_MEDICATION_DOSAGE),
             "unit": self._medication.get(ATTR_MEDICATION_UNIT),
             "frequency": self._medication.get(ATTR_MEDICATION_FREQUENCY),

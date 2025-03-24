@@ -172,8 +172,12 @@ class MedicationTrackerCoordinator(DataUpdateCoordinator):
             dose_data["timestamp"] = datetime.now().isoformat()
             
         result = self.storage.add_dose(medication_id, dose_data)
-        await self.storage.async_save()
-        await self.async_refresh()
+        if result:
+            await self.storage.async_save()
+            # Force an immediate refresh of the coordinator data
+            await self.async_refresh()
+            # Notify all listeners of the update
+            self.async_set_updated_data(self.data)
         return result
         
     async def record_temperature(self, patient_id: str, temperature_data: Dict[str, Any] = None) -> bool:
