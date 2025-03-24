@@ -36,10 +36,15 @@ async def async_setup_entry(
         _LOGGER.error("Cannot set up buttons - coordinator not found")
         return
 
+    _LOGGER.debug("Setting up Medication Tracker buttons")
     entities = []
     
     # Create buttons for each patient
-    for patient in coordinator.data.get("patients", []):
+    patients = coordinator.data.get("patients", [])
+    _LOGGER.debug("Found %d patients to create buttons for", len(patients))
+    
+    for patient in patients:
+        _LOGGER.debug("Creating buttons for patient: %s", patient.get(ATTR_PATIENT_NAME))
         # Create the patient device info
         device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{patient['id']}")},
@@ -64,8 +69,10 @@ async def async_setup_entry(
             med for med_id, med in coordinator.data.get("medications", {}).items()
             if med.get("patient_id") == patient["id"]
         ]
+        _LOGGER.debug("Found %d medications for patient %s", len(patient_medications), patient.get(ATTR_PATIENT_NAME))
         
         for medication in patient_medications:
+            _LOGGER.debug("Creating button for medication: %s", medication.get(ATTR_MEDICATION_NAME))
             entities.append(
                 RecordDoseButton(
                     coordinator=coordinator,
@@ -76,6 +83,7 @@ async def async_setup_entry(
                 )
             )
 
+    _LOGGER.debug("Created %d total buttons", len(entities))
     async_add_entities(entities)
 
 class RecordDoseButton(CoordinatorEntity, ButtonEntity):

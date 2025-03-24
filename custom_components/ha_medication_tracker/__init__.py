@@ -34,12 +34,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = MedicationTrackerCoordinator(hass, entry)
         await coordinator.async_setup()
         
-        # Store coordinator reference
+        # Store coordinator reference with a consistent key
         hass.data.setdefault(DOMAIN, {})
-        hass.data[DOMAIN][entry.entry_id] = coordinator
+        hass.data[DOMAIN]["coordinator"] = coordinator
         
         # Set up platforms
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        
+        # Set up services
+        await async_setup_services(hass)
         
         return True
         
@@ -52,7 +55,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     try:
         # Get coordinator
-        coordinator = hass.data[DOMAIN][entry.entry_id]
+        coordinator = hass.data[DOMAIN]["coordinator"]
         
         # Save data before unloading
         await coordinator.async_shutdown()
@@ -61,7 +64,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         
         if unload_ok:
-            hass.data[DOMAIN].pop(entry.entry_id)
+            hass.data[DOMAIN].pop("coordinator")
             
         return unload_ok
         
