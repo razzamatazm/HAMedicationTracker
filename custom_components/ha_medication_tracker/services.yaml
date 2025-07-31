@@ -1,0 +1,219 @@
+add_patient:
+  name: Add Patient
+  description: Add a new patient to the medication tracker
+  fields:
+    patient_id:
+      name: Patient ID
+      description: Unique identifier for the patient (optional - will be auto-generated if not provided)
+      example: "patient_001"
+      selector:
+        text:
+    patient_name:
+      name: Patient Name
+      description: Name of the patient
+      required: true
+      example: "John Doe"
+      selector:
+        text:
+    patient_weight:
+      name: Weight
+      description: Weight of the patient
+      example: 70.5
+      selector:
+        number:
+          min: 0
+          max: 500
+          step: 0.1
+          unit_of_measurement: kg
+    patient_weight_unit:
+      name: Weight Unit
+      description: Unit for patient weight
+      default: "kg"
+      example: "kg"
+      selector:
+        select:
+          options:
+            - "kg"
+            - "lbs"
+    patient_age:
+      name: Age
+      description: Age of the patient
+      example: 25
+      selector:
+        number:
+          min: 0
+          max: 150
+          unit_of_measurement: years
+
+remove_patient:
+  name: Remove Patient
+  description: Remove a patient from the medication tracker
+  fields:
+    patient_id:
+      name: Patient ID
+      description: ID of the patient to remove
+      required: true
+      example: "patient_001"
+      selector:
+        text:
+
+add_medication:
+  name: Add Medication
+  description: Add a new medication for a patient
+  fields:
+    medication_id:
+      name: Medication ID
+      description: Unique identifier for the medication (optional - will be auto-generated if not provided)
+      example: "med_001"
+      selector:
+        text:
+    patient_id:
+      name: Patient ID
+      description: ID of the patient this medication is for
+      required: true
+      example: "patient_001"
+      selector:
+        text:
+    medication_name:
+      name: Medication Name
+      description: Name of the medication
+      required: true
+      example: "Paracetamol"
+      selector:
+        text:
+    medication_dosage:
+      name: Dosage
+      description: Standard dosage amount
+      example: 500
+      selector:
+        number:
+          min: 0
+          step: 0.1
+    medication_unit:
+      name: Unit
+      description: Unit for the medication dosage
+      default: "mg"
+      example: "mg"
+      selector:
+        select:
+          options:
+            - "mg"
+            - "g"
+            - "ml"
+            - "l"
+            - "units"
+    medication_frequency:
+      name: Frequency (hours)
+      description: How often the medication should be taken (in hours)
+      default: 6
+      example: 6
+      selector:
+        number:
+          min: 0.5
+          max: 24
+          step: 0.5
+          unit_of_measurement: hours
+    medication_max_daily_doses:
+      name: Max Daily Doses
+      description: Maximum number of doses per day
+      example: 4
+      selector:
+        number:
+          min: 1
+          max: 20
+    medication_instructions:
+      name: Instructions
+      description: Special instructions for taking this medication
+      example: "Take with food"
+      selector:
+        text:
+          multiline: true
+
+remove_medication:
+  name: Remove Medication
+  description: Remove a medication from the tracker
+  fields:
+    medication_id:
+      name: Medication ID
+      description: ID of the medication to remove
+      required: true
+      example: "med_001"
+      selector:
+        text:
+
+record_dose:
+  name: Record Dose
+  description: Record that a medication dose was taken
+  fields:
+    medication_id:
+      name: Medication ID
+      description: ID of the medication
+      required: true
+      example: "med_001"
+      selector:
+        text:
+    dose_timestamp:
+      name: Timestamp
+      description: When the dose was taken (defaults to now)
+      example: "2025-07-31T10:30:00"
+      selector:
+        datetime:
+    dose_amount:
+      name: Amount
+      description: Amount of medication taken (uses default if not specified)
+      example: 500
+      selector:
+        number:
+          min: 0
+          step: 0.1
+    dose_unit:
+      name: Unit
+      description: Unit for the dose amount (uses default if not specified)
+      example: "mg"
+      selector:
+        select:
+          options:
+            - "mg"
+            - "g"
+            - "ml"
+            - "l"
+            - "units"
+
+record_temperature:
+  name: Record Temperature
+  description: Record a patient's temperature
+  fields:
+    patient_id:
+      name: Patient ID
+      description: ID of the patient
+      required: true
+      example: "patient_001"
+      selector:
+        text:
+    temperature_value:
+      name: Temperature
+      description: Temperature value
+      required: true
+      example: 37.2
+      selector:
+        number:
+          min: 30
+          max: 45
+          step: 0.1
+          unit_of_measurement: °C
+    temperature_timestamp:
+      name: Timestamp
+      description: When the temperature was taken (defaults to now)
+      example: "2025-07-31T10:30:00"
+      selector:
+        datetime:
+    temperature_unit:
+      name: Unit
+      description: Temperature unit
+      default: "°C"
+      example: "°C"
+      selector:
+        select:
+          options:
+            - "°C"
+            - "°F"
